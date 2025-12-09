@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2024-12-09
+
+### Changed
+- Improved documentation to make `xcw tail` command more prominent
+  - Added "Start Here" section to README with explicit `-s` and `-a` flags
+  - Updated quick start guide to emphasize the primary command
+  - Made agent guidance more prescriptive: "ALWAYS START WITH: xcw tail"
+  - All examples now include simulator name (`-s`) parameter
+
 ## [0.5.1] - 2024-12-09
 
 ### Changed

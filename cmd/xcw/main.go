@@ -11,14 +11,17 @@ import (
 
 const quickStart = `xcw - iOS Simulator log streaming for AI agents
 
-Quick start:
-  xcw list                              List simulators
-  xcw apps -s "iPhone 17 Pro"           List apps
-  xcw tail -s "iPhone 17 Pro" -a BUNDLE_ID
+START HERE (this is the command you want):
+  xcw tail -s "iPhone 17 Pro" -a com.example.myapp
 
-For help:
-  xcw --help                            All commands and flags
-  xcw help --json                       Machine-readable docs (for AI agents)
+Flags:
+  -s    Simulator name (run 'xcw list' to see available)
+  -a    Your app's bundle ID (run 'xcw apps' to list installed)
+
+Other useful commands:
+  xcw list                              List simulators
+  xcw apps                              List installed apps
+  xcw help --json                       Full docs for AI agents
 `
 
 func main() {
@@ -48,7 +51,7 @@ func main() {
 
 	ctx := kong.Parse(&c,
 		kong.Name("xcw"),
-		kong.Description("XcodeConsoleWatcher: Tail iOS Simulator logs for AI agents\n\nAI agents: run 'xcw help --json' for complete machine-readable documentation"),
+		kong.Description("XcodeConsoleWatcher: Stream iOS Simulator logs\n\nSTART HERE: xcw tail -a <bundle_id>\n\nAI agents: run 'xcw help --json' for complete documentation"),
 		kong.UsageOnError(),
 		kong.ConfigureHelp(kong.HelpOptions{
 			Compact: true,

@@ -4,6 +4,25 @@
 
 `xcw` is a small Go-based CLI that streams and inspects Xcode iOS Simulator console logs.  It was originally built to help AI agents such as Claude and Codex monitor app logs in real-time, but it's just as useful for human developers.  Every line of output is emitted as newline-delimited JSON (NDJSON), so agents can process events incrementally without waiting for the stream to finish.  Schema versioning and clearly defined event types make it easy to adapt your parser over time.
 
+---
+
+## ⚡ Start Here
+
+**This is the command you want:**
+
+```sh
+xcw tail -s "iPhone 17 Pro" -a com.example.myapp
+```
+
+That's it. This streams logs from your app in real-time.
+
+- `-s` — Simulator name (run `xcw list` to see available simulators)
+- `-a` — Your app's bundle ID (run `xcw apps` to list installed apps)
+
+> **For AI agents:** Always start with `xcw tail -s <simulator> -a <bundle_id>`. This is the primary command. Only use `query`, `watch`, or `analyze` for specific use cases after you've tried `tail`.
+
+---
+
 ## Highlights
 
 * **Structured NDJSON output** – each log event, summary or error is emitted as a JSON object, perfect for incremental consumption.

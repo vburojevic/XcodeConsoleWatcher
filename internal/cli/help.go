@@ -87,7 +87,7 @@ func buildDocumentation() *HelpOutput {
 		Version:        Version,
 		Purpose:        "iOS Simulator log streaming CLI optimized for AI agents. Outputs structured NDJSON for real-time and historical log access.",
 		PrimaryCommand: "tail",
-		AgentGuidance:  "Use 'xcw tail' for real-time log streaming. Use --session-dir to record logs to files for later analysis with 'xcw analyze'. The 'query' command reads from macOS system logs (not session files) and is only useful when you forgot to start tail. Tmux (--tmux) is for human visual monitoring; AI agents should use --session-dir or --output instead.",
+		AgentGuidance:  "ALWAYS START WITH: xcw tail -s <simulator> -a <bundle_id>. This is THE primary command for monitoring iOS app logs. Run 'xcw list' to get simulator names, and 'xcw apps' to get bundle IDs. Only use other commands (query, watch, analyze) for specific use cases AFTER you've tried tail. The 'query' command reads from macOS system logs and is only useful when you forgot to start tail. Tmux (--tmux) is for human visual monitoring; AI agents should use stdout or --output instead.",
 		QuickStart: map[string]string{
 			"list_simulators":      `xcw list`,
 			"list_apps":            `xcw apps -s "iPhone 17 Pro"`,
