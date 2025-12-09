@@ -16,6 +16,7 @@ A Go CLI for tailing and watching Xcode iOS Simulator console logs, optimized fo
 - **Record/Replay**: Capture logs and replay them for analysis
 - **Pattern Persistence**: Track known vs new error patterns across sessions
 - **System Diagnostics**: Built-in doctor command to verify setup
+- **Self-Documenting**: `xcw help --json` and `xcw examples` for AI agents
 
 ## Installation
 
@@ -66,6 +67,22 @@ xcw apps -s "iPhone 17 Pro"
 
 # Output as NDJSON
 xcw apps -f ndjson
+```
+
+### Get Help & Examples (for AI Agents)
+
+```bash
+# Complete documentation as JSON (for AI agents)
+xcw help --json
+
+# Usage examples for all commands
+xcw examples
+
+# Examples for a specific command
+xcw examples tail
+
+# Machine-readable examples
+xcw examples --json
 ```
 
 ### Tail Logs (Real-time)

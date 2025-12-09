@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2024-12-09
+
 ### Added
+- `xcw examples` command - Show usage examples for all commands
+  - `xcw examples [command]` - Examples for specific command
+  - `xcw examples --json` - Machine-readable format for AI agents
+- `xcw help --json` - Complete CLI documentation as JSON for AI agents
+  - All commands with usage and examples
+  - Output types with example values
+  - Error codes with recovery steps
+  - Workflow patterns (Codex streaming, Claude Code background, etc.)
 - `xcw update` command showing upgrade instructions for Homebrew and Go install
 - `xcw sessions` command for managing session log files
   - `xcw sessions list` - List session files sorted by date
@@ -21,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md for version history tracking
 
 ### Changed
+- Simplified README AI agent examples with explicit `-s` simulator flag
 - File output now creates fresh per-session files instead of rotating logs
 - Removed lumberjack dependency for simpler, lighter codebase
 
