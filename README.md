@@ -197,6 +197,72 @@ FLAGS:
       --session=STRING     Tmux session name (required)
 ```
 
+### `xcw watch`
+
+Watch logs and trigger commands on specific patterns.
+
+```
+FLAGS:
+  -s, --simulator=STRING   Simulator name or UDID
+  -b, --booted             Use booted simulator (error if multiple)
+  -a, --app=STRING         App bundle identifier (required)
+      --on-error=STRING    Command to run when error-level log detected
+      --on-fault=STRING    Command to run when fault-level log detected
+      --on-pattern=STRING  Pattern:command pairs (repeatable)
+      --cooldown=DURATION  Minimum time between triggers (default: 5s)
+```
+
+### `xcw summary`
+
+Output a summary of recent buffered logs.
+
+```
+FLAGS:
+  -s, --simulator=STRING   Simulator name or UDID
+  -b, --booted             Use booted simulator (error if multiple)
+  -a, --app=STRING         App bundle identifier (required)
+```
+
+### `xcw schema`
+
+Output JSON Schema for xcw output types.
+
+```
+FLAGS:
+      --type=STRING        Specific type(s) to output (comma-separated)
+```
+
+### `xcw config`
+
+Show or manage configuration.
+
+```
+FLAGS:
+      --show               Show current configuration
+      --path               Show config file path
+```
+
+### `xcw completion`
+
+Generate shell completions.
+
+```
+FLAGS:
+      --shell=STRING       Shell type: bash, zsh, fish
+```
+
+### `xcw ui`
+
+Interactive TUI log viewer with real-time filtering.
+
+```
+FLAGS:
+  -s, --simulator=STRING   Simulator name or UDID
+  -b, --booted             Use booted simulator (error if multiple)
+  -a, --app=STRING         App bundle identifier (required)
+      --buffer-size=INT    Number of logs to buffer (default: 1000)
+```
+
 ## Global Flags
 
 ```
@@ -234,7 +300,7 @@ xcw clear --session xcw-iphone-15-pro
 
 ## Requirements
 
-- macOS 26+ (Tahoe)
+- macOS 14+ (Sonoma) or later
 - Xcode with iOS Simulator
 - tmux (optional, for persistent sessions)
 

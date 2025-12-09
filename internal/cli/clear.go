@@ -39,8 +39,8 @@ func (c *ClearCmd) Run(globals *Globals) error {
 
 	// Output success
 	if globals.Format == "ndjson" {
-		fmt.Fprintf(globals.Stdout, `{"type":"info","message":"Session %s cleared","session":"%s"}`+"\n",
-			c.Session, c.Session)
+		output.NewNDJSONWriter(globals.Stdout).WriteInfo(
+			fmt.Sprintf("Session %s cleared", c.Session), "", "", "", "")
 	} else {
 		fmt.Fprintf(globals.Stdout, "Session %s cleared\n", c.Session)
 	}

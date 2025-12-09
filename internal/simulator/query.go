@@ -24,6 +24,7 @@ type QueryOptions struct {
 	Since             time.Duration  // How far back to query
 	Until             time.Time      // End time (default: now)
 	Limit             int            // Max entries to return
+	RawPredicate      string         // Raw NSPredicate string (overrides other filters)
 }
 
 // QueryReader reads historical logs from a simulator
@@ -117,26 +118,52 @@ func (r *QueryReader) buildArgs(udid string, opts QueryOptions) []string {
 	return args
 }
 
+// buildPredicate constructs an NSPredicate string for log filtering
+// Uses AND between groups (subsystem, category) for narrowing results
+// Uses OR within groups for matching any of multiple values
 func (r *QueryReader) buildPredicate(opts QueryOptions) string {
-	var parts []string
+	// If raw predicate provided, use it directly
+	if opts.RawPredicate != "" {
+		return opts.RawPredicate
+	}
 
+	var groups []string
+
+	// Subsystem group: bundle ID and/or explicit subsystems (OR within group)
+	var subsystemParts []string
 	if opts.BundleID != "" {
-		parts = append(parts, fmt.Sprintf(`subsystem BEGINSWITH "%s"`, opts.BundleID))
+		subsystemParts = append(subsystemParts, fmt.Sprintf(`subsystem BEGINSWITH "%s"`, opts.BundleID))
 	}
-
 	for _, sub := range opts.Subsystems {
-		parts = append(parts, fmt.Sprintf(`subsystem == "%s"`, sub))
+		subsystemParts = append(subsystemParts, fmt.Sprintf(`subsystem == "%s"`, sub))
+	}
+	if len(subsystemParts) > 0 {
+		if len(subsystemParts) == 1 {
+			groups = append(groups, subsystemParts[0])
+		} else {
+			groups = append(groups, "("+strings.Join(subsystemParts, " OR ")+")")
+		}
 	}
 
+	// Category group (OR within group)
+	var categoryParts []string
 	for _, cat := range opts.Categories {
-		parts = append(parts, fmt.Sprintf(`category == "%s"`, cat))
+		categoryParts = append(categoryParts, fmt.Sprintf(`category == "%s"`, cat))
+	}
+	if len(categoryParts) > 0 {
+		if len(categoryParts) == 1 {
+			groups = append(groups, categoryParts[0])
+		} else {
+			groups = append(groups, "("+strings.Join(categoryParts, " OR ")+")")
+		}
 	}
 
-	if len(parts) == 0 {
+	if len(groups) == 0 {
 		return ""
 	}
 
-	return strings.Join(parts, " OR ")
+	// AND between groups for narrowing
+	return strings.Join(groups, " AND ")
 }
 
 func formatDuration(d time.Duration) string {

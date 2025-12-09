@@ -25,6 +25,7 @@ type QueryCmd struct {
 	Limit            int      `default:"1000" help:"Maximum number of logs to return"`
 	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
 	Category         []string `help:"Filter by category (can be repeated)"`
+	Predicate        string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
 	Analyze          bool     `help:"Include AI-friendly analysis summary"`
 }
 
@@ -81,8 +82,9 @@ func (c *QueryCmd) Run(globals *Globals) error {
 	// Output query info if not quiet
 	if !globals.Quiet {
 		if globals.Format == "ndjson" {
-			fmt.Fprintf(globals.Stdout, `{"type":"info","message":"Querying logs from %s","simulator":"%s","since":"%s"}`+"\n",
-				device.Name, device.UDID, c.Since)
+			output.NewNDJSONWriter(globals.Stdout).WriteInfo(
+				fmt.Sprintf("Querying logs from %s", device.Name),
+				device.Name, device.UDID, c.Since, "")
 		} else {
 			fmt.Fprintf(globals.Stderr, "Querying logs from %s (%s)\n", device.Name, device.UDID)
 			fmt.Fprintf(globals.Stderr, "Time range: last %s\n", c.Since)
@@ -102,6 +104,7 @@ func (c *QueryCmd) Run(globals *Globals) error {
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		Since:             since,
 		Limit:             c.Limit,
+		RawPredicate:      c.Predicate,
 	}
 
 	// Execute query

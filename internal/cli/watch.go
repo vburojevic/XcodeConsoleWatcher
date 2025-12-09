@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,18 +21,22 @@ import (
 
 // WatchCmd watches logs and triggers commands on specific patterns
 type WatchCmd struct {
-	Simulator        string   `short:"s" help:"Simulator name or UDID"`
-	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
-	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
-	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
-	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
-	OnError          string   `help:"Command to run when error-level log detected"`
-	OnFault          string   `help:"Command to run when fault-level log detected"`
-	OnPattern        []string `help:"Pattern:command pairs (e.g., 'crash:notify.sh') - can be repeated"`
-	Cooldown         string   `default:"5s" help:"Minimum time between trigger executions"`
-	Tmux             bool     `help:"Output to tmux session"`
-	Session          string   `help:"Custom tmux session name (default: xcw-<simulator>)"`
+	Simulator           string   `short:"s" help:"Simulator name or UDID"`
+	Booted              bool     `short:"b" help:"Use booted simulator (error if multiple)"`
+	App                 string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
+	Pattern             string   `short:"p" help:"Regex pattern to filter log messages"`
+	Exclude             string   `short:"x" help:"Regex pattern to exclude from log messages"`
+	ExcludeSubsystem    []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
+	Predicate           string   `help:"Raw NSPredicate filter (overrides --app)"`
+	OnError             string   `help:"Command to run when error-level log detected"`
+	OnFault             string   `help:"Command to run when fault-level log detected"`
+	OnPattern           []string `help:"Pattern:command pairs (e.g., 'crash:notify.sh') - can be repeated"`
+	Cooldown            string   `default:"5s" help:"Minimum time between trigger executions"`
+	TriggerTimeout      string   `default:"30s" help:"Maximum time for trigger command execution"`
+	MaxParallelTriggers int      `default:"5" help:"Maximum concurrent trigger executions"`
+	TriggerOutput       string   `default:"discard" enum:"inherit,discard,capture" help:"Trigger command output handling"`
+	Tmux                bool     `help:"Output to tmux session"`
+	Session             string   `help:"Custom tmux session name (default: xcw-<simulator>)"`
 }
 
 // triggerConfig holds parsed trigger configuration
@@ -115,8 +119,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 					tmuxMgr.ClearPaneWithBanner(fmt.Sprintf("Watching: %s (%s) [TRIGGER MODE]", device.Name, c.App))
 
 					if globals.Format == "ndjson" {
-						fmt.Fprintf(globals.Stdout, `{"type":"tmux","session":"%s","attach":"%s"}`+"\n",
-							sessionName, tmuxMgr.AttachCommand())
+						output.NewNDJSONWriter(globals.Stdout).WriteTmux(sessionName, tmuxMgr.AttachCommand())
 					} else {
 						fmt.Fprintf(globals.Stdout, "Tmux session: %s\n", sessionName)
 						fmt.Fprintf(globals.Stdout, "Attach with: %s\n", tmuxMgr.AttachCommand())
@@ -133,8 +136,9 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	// Output watch info
 	if !globals.Quiet && tmuxMgr == nil {
 		if globals.Format == "ndjson" {
-			fmt.Fprintf(globals.Stdout, `{"type":"info","message":"Watching logs from %s","simulator":"%s","mode":"trigger"}`+"\n",
-				device.Name, device.UDID)
+			output.NewNDJSONWriter(globals.Stdout).WriteInfo(
+				fmt.Sprintf("Watching logs from %s", device.Name),
+				device.Name, device.UDID, "", "trigger")
 		} else {
 			fmt.Fprintf(globals.Stderr, "Watching logs from %s (%s)\n", device.Name, device.UDID)
 			fmt.Fprintf(globals.Stderr, "App: %s\n", c.App)
@@ -179,6 +183,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 		ExcludePattern:    excludePattern,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        100,
+		RawPredicate:      c.Predicate,
 	}
 
 	if err := streamer.Start(ctx, device.UDID, opts); err != nil {
@@ -245,7 +250,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 		case err := <-streamer.Errors():
 			if !globals.Quiet {
 				if globals.Format == "ndjson" {
-					fmt.Fprintf(outputWriter, `{"type":"warning","message":"%s"}`+"\n", err.Error())
+					output.NewNDJSONWriter(outputWriter).WriteWarning(err.Error())
 				} else {
 					fmt.Fprintf(globals.Stderr, "Warning: %s\n", err.Error())
 				}
@@ -258,8 +263,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 func (c *WatchCmd) runTrigger(globals *Globals, triggerType, command string, entry *domain.LogEntry) {
 	// Output trigger notification
 	if globals.Format == "ndjson" {
-		fmt.Fprintf(globals.Stdout, `{"type":"trigger","trigger":"%s","command":"%s","message":"%s"}`+"\n",
-			triggerType, command, escapeJSON(entry.Message))
+		output.NewNDJSONWriter(globals.Stdout).WriteTrigger(triggerType, command, entry.Message)
 	} else if !globals.Quiet {
 		fmt.Fprintf(globals.Stderr, "[TRIGGER:%s] Running: %s\n", triggerType, command)
 	}
@@ -279,8 +283,7 @@ func (c *WatchCmd) runTrigger(globals *Globals, triggerType, command string, ent
 	go func() {
 		if err := cmd.Run(); err != nil {
 			if globals.Format == "ndjson" {
-				fmt.Fprintf(globals.Stdout, `{"type":"trigger_error","command":"%s","error":"%s"}`+"\n",
-					command, escapeJSON(err.Error()))
+				output.NewNDJSONWriter(globals.Stdout).WriteTriggerError(command, err.Error())
 			} else if !globals.Quiet {
 				fmt.Fprintf(globals.Stderr, "[TRIGGER ERROR] %s: %s\n", command, err.Error())
 			}
@@ -296,14 +299,4 @@ func (c *WatchCmd) outputError(globals *Globals, code, message string) error {
 		fmt.Fprintf(globals.Stderr, "Error [%s]: %s\n", code, message)
 	}
 	return errors.New(message)
-}
-
-// escapeJSON escapes special characters for JSON string
-func escapeJSON(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	s = strings.ReplaceAll(s, "\t", `\t`)
-	return s
 }

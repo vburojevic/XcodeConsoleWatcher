@@ -16,13 +16,15 @@ import (
 
 // UICmd launches an interactive TUI for viewing logs
 type UICmd struct {
-	Simulator        string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
+	Simulator        string   `short:"s" help:"Simulator name or UDID"`
+	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
 	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
 	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
 	Category         []string `help:"Filter by category (can be repeated)"`
+	Predicate        string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
 	BufferSize       int      `default:"1000" help:"Number of recent logs to buffer"`
 }
 
@@ -39,10 +41,23 @@ func (c *UICmd) Run(globals *Globals) error {
 		cancel()
 	}()
 
+	// Validate mutual exclusivity of flags
+	if c.Simulator != "" && c.Booted {
+		return fmt.Errorf("--simulator and --booted are mutually exclusive")
+	}
+
 	// Find the simulator
-	globals.Debug("Finding simulator: %s", c.Simulator)
 	mgr := simulator.NewManager()
-	device, err := mgr.FindDevice(ctx, c.Simulator)
+	var device *domain.Device
+	var err error
+
+	if c.Simulator != "" {
+		globals.Debug("Finding simulator by name/UDID: %s", c.Simulator)
+		device, err = mgr.FindDevice(ctx, c.Simulator)
+	} else {
+		globals.Debug("Finding booted simulator (auto-detect)")
+		device, err = mgr.FindBootedDevice(ctx)
+	}
 	if err != nil {
 		return fmt.Errorf("device not found: %w", err)
 	}
@@ -77,6 +92,7 @@ func (c *UICmd) Run(globals *Globals) error {
 		ExcludePattern:    excludePattern,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        c.BufferSize,
+		RawPredicate:      c.Predicate,
 	}
 
 	globals.Debug("Starting log stream for TUI...")

@@ -24,6 +24,7 @@ func NewNDJSONWriter(w io.Writer) *NDJSONWriter {
 
 // OutputEntry is the simplified NDJSON output format
 type OutputEntry struct {
+	Type      string `json:"type"` // Always "log"
 	Timestamp string `json:"timestamp"`
 	Level     string `json:"level"`
 	Process   string `json:"process"`
@@ -41,9 +42,48 @@ type Heartbeat struct {
 	LogsSinceLast int    `json:"logs_since_last"`
 }
 
+// InfoOutput represents an informational message
+type InfoOutput struct {
+	Type      string `json:"type"` // Always "info"
+	Message   string `json:"message"`
+	Simulator string `json:"simulator,omitempty"`
+	UDID      string `json:"udid,omitempty"`
+	Since     string `json:"since,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+}
+
+// WarningOutput represents a warning message
+type WarningOutput struct {
+	Type    string `json:"type"` // Always "warning"
+	Message string `json:"message"`
+}
+
+// TmuxOutput represents tmux session information
+type TmuxOutput struct {
+	Type    string `json:"type"` // Always "tmux"
+	Session string `json:"session"`
+	Attach  string `json:"attach"`
+}
+
+// TriggerOutput represents a trigger event
+type TriggerOutput struct {
+	Type    string `json:"type"` // Always "trigger"
+	Trigger string `json:"trigger"`
+	Command string `json:"command"`
+	Message string `json:"message"`
+}
+
+// TriggerErrorOutput represents a trigger execution error
+type TriggerErrorOutput struct {
+	Type    string `json:"type"` // Always "trigger_error"
+	Command string `json:"command"`
+	Error   string `json:"error"`
+}
+
 // Write outputs a single log entry as NDJSON
 func (w *NDJSONWriter) Write(entry *domain.LogEntry) error {
 	out := OutputEntry{
+		Type:      "log",
 		Timestamp: entry.Timestamp.Format(time.RFC3339Nano),
 		Level:     string(entry.Level),
 		Process:   entry.Process,
@@ -73,6 +113,54 @@ func (w *NDJSONWriter) WriteRaw(v interface{}) error {
 // WriteHeartbeat outputs a heartbeat keepalive message
 func (w *NDJSONWriter) WriteHeartbeat(h *Heartbeat) error {
 	return w.encoder.Encode(h)
+}
+
+// WriteInfo outputs an informational message
+func (w *NDJSONWriter) WriteInfo(message, simulator, udid, since, mode string) error {
+	return w.encoder.Encode(&InfoOutput{
+		Type:      "info",
+		Message:   message,
+		Simulator: simulator,
+		UDID:      udid,
+		Since:     since,
+		Mode:      mode,
+	})
+}
+
+// WriteWarning outputs a warning message
+func (w *NDJSONWriter) WriteWarning(message string) error {
+	return w.encoder.Encode(&WarningOutput{
+		Type:    "warning",
+		Message: message,
+	})
+}
+
+// WriteTmux outputs tmux session information
+func (w *NDJSONWriter) WriteTmux(session, attach string) error {
+	return w.encoder.Encode(&TmuxOutput{
+		Type:    "tmux",
+		Session: session,
+		Attach:  attach,
+	})
+}
+
+// WriteTrigger outputs a trigger event
+func (w *NDJSONWriter) WriteTrigger(trigger, command, message string) error {
+	return w.encoder.Encode(&TriggerOutput{
+		Type:    "trigger",
+		Trigger: trigger,
+		Command: command,
+		Message: message,
+	})
+}
+
+// WriteTriggerError outputs a trigger execution error
+func (w *NDJSONWriter) WriteTriggerError(command, errMsg string) error {
+	return w.encoder.Encode(&TriggerErrorOutput{
+		Type:    "trigger_error",
+		Command: command,
+		Error:   errMsg,
+	})
 }
 
 // TextWriter writes log entries as formatted text

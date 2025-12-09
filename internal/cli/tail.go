@@ -27,6 +27,7 @@ type TailCmd struct {
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
 	Category         []string `help:"Filter by category (can be repeated)"`
+	Predicate        string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
 	BufferSize       int      `default:"100" help:"Number of recent logs to buffer"`
 	SummaryInterval  string   `help:"Emit periodic summaries (e.g., '30s', '1m')"`
 	Heartbeat        string   `help:"Emit periodic heartbeat messages (e.g., '10s', '30s')"`
@@ -112,8 +113,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 					// Output attach command
 					if globals.Format == "ndjson" {
-						fmt.Fprintf(globals.Stdout, `{"type":"tmux","session":"%s","attach":"%s"}`+"\n",
-							sessionName, tmuxMgr.AttachCommand())
+						output.NewNDJSONWriter(globals.Stdout).WriteTmux(sessionName, tmuxMgr.AttachCommand())
 					} else {
 						fmt.Fprintf(globals.Stdout, "Tmux session: %s\n", sessionName)
 						fmt.Fprintf(globals.Stdout, "Attach with: %s\n", tmuxMgr.AttachCommand())
@@ -131,8 +131,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 	// Output device info if not quiet and not in tmux mode (tmux already shows banner)
 	if !globals.Quiet && tmuxMgr == nil {
 		if globals.Format == "ndjson" {
-			fmt.Fprintf(globals.Stdout, `{"type":"info","message":"Streaming logs from %s (%s)","simulator":"%s","udid":"%s"}`+"\n",
-				device.Name, device.UDID, device.Name, device.UDID)
+			output.NewNDJSONWriter(globals.Stdout).WriteInfo(
+				fmt.Sprintf("Streaming logs from %s (%s)", device.Name, device.UDID),
+				device.Name, device.UDID, "", "")
 		} else {
 			fmt.Fprintf(globals.Stderr, "Streaming logs from %s (%s)\n", device.Name, device.UDID)
 			fmt.Fprintf(globals.Stderr, "Filtering by app: %s\n", c.App)
@@ -174,6 +175,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 		ExcludePattern:    excludePattern,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        c.BufferSize,
+		RawPredicate:      c.Predicate,
 	}
 
 	globals.Debug("Stream options: BundleID=%s, MinLevel=%s, BufferSize=%d", opts.BundleID, opts.MinLevel, opts.BufferSize)
@@ -250,7 +252,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 		case err := <-streamer.Errors():
 			if !globals.Quiet {
 				if globals.Format == "ndjson" {
-					fmt.Fprintf(outputWriter, `{"type":"warning","message":"%s"}`+"\n", err.Error())
+					output.NewNDJSONWriter(outputWriter).WriteWarning(err.Error())
 				} else {
 					fmt.Fprintf(globals.Stderr, "Warning: %s\n", err.Error())
 				}

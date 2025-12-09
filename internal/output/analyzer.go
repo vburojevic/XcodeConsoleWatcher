@@ -10,6 +10,13 @@ import (
 	"github.com/vedranburojevic/xcw/internal/domain"
 )
 
+// Precompiled regexes for message normalization
+var (
+	hexAddrRegex = regexp.MustCompile(`0x[0-9a-fA-F]+`)
+	numberRegex  = regexp.MustCompile(`\d+`)
+	uuidRegex    = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+)
+
 // Analyzer provides AI-friendly log analysis and summarization
 type Analyzer struct {
 	errorPatterns []*regexp.Regexp
@@ -90,12 +97,12 @@ func (a *Analyzer) Summarize(entries []domain.LogEntry) *domain.LogSummary {
 
 // normalizeMessage removes variable parts to group similar messages
 func (a *Analyzer) normalizeMessage(msg string) string {
+	// Remove UUIDs first (before numbers, since UUIDs contain numbers)
+	msg = uuidRegex.ReplaceAllString(msg, "<uuid>")
 	// Remove hex addresses
-	msg = regexp.MustCompile(`0x[0-9a-fA-F]+`).ReplaceAllString(msg, "<addr>")
+	msg = hexAddrRegex.ReplaceAllString(msg, "<addr>")
 	// Remove numbers
-	msg = regexp.MustCompile(`\d+`).ReplaceAllString(msg, "<n>")
-	// Remove UUIDs
-	msg = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`).ReplaceAllString(msg, "<uuid>")
+	msg = numberRegex.ReplaceAllString(msg, "<n>")
 
 	// Truncate long messages
 	if len(msg) > 100 {
