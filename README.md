@@ -44,6 +44,12 @@ make install
 
 ## Quick start
 
+Run `xcw` with no arguments to see a quick start guide:
+
+```sh
+xcw
+```
+
 These commands give you a feel for `xcw` without any configuration.  They work on macOS with at least one iOS Simulator installed.
 
 ### List available simulators

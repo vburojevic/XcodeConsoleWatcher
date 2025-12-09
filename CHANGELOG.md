@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2024-12-09
+
+### Added
+- Quick start guide shown when running `xcw` with no arguments
+- AI agent hint in `--help` output pointing to `xcw help --json`
+
+### Changed
+- Streamlined README with cleaner structure and concise examples
+
 ## [0.2.0] - 2024-12-09
 
 ### Added
