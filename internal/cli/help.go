@@ -12,14 +12,16 @@ type HelpCmd struct {
 
 // HelpOutput is the complete documentation structure
 type HelpOutput struct {
-	Type       string                  `json:"type"`
-	Version    string                  `json:"version"`
-	Purpose    string                  `json:"purpose"`
-	QuickStart map[string]string       `json:"quick_start"`
-	Commands   map[string]CommandDoc   `json:"commands"`
-	OutputTypes map[string]OutputTypeDoc `json:"output_types"`
-	ErrorCodes map[string]ErrorCodeDoc `json:"error_codes"`
-	Workflows  []WorkflowDoc           `json:"workflows"`
+	Type           string                  `json:"type"`
+	Version        string                  `json:"version"`
+	Purpose        string                  `json:"purpose"`
+	PrimaryCommand string                  `json:"primary_command"`
+	AgentGuidance  string                  `json:"agent_guidance"`
+	QuickStart     map[string]string       `json:"quick_start"`
+	Commands       map[string]CommandDoc   `json:"commands"`
+	OutputTypes    map[string]OutputTypeDoc `json:"output_types"`
+	ErrorCodes     map[string]ErrorCodeDoc `json:"error_codes"`
+	Workflows      []WorkflowDoc           `json:"workflows"`
 }
 
 // CommandDoc documents a single command
@@ -81,15 +83,17 @@ func (c *HelpCmd) Run(globals *Globals) error {
 
 func buildDocumentation() *HelpOutput {
 	return &HelpOutput{
-		Type:    "documentation",
-		Version: Version,
-		Purpose: "iOS Simulator log streaming CLI optimized for AI agents. Outputs structured NDJSON for real-time and historical log access.",
+		Type:           "documentation",
+		Version:        Version,
+		Purpose:        "iOS Simulator log streaming CLI optimized for AI agents. Outputs structured NDJSON for real-time and historical log access.",
+		PrimaryCommand: "tail",
+		AgentGuidance:  "Use 'xcw tail' for real-time log streaming. Use --session-dir to record logs to files for later analysis with 'xcw analyze'. The 'query' command reads from macOS system logs (not session files) and is only useful when you forgot to start tail. Tmux (--tmux) is for human visual monitoring; AI agents should use --session-dir or --output instead.",
 		QuickStart: map[string]string{
 			"list_simulators":      `xcw list`,
 			"list_apps":            `xcw apps -s "iPhone 17 Pro"`,
 			"stream_logs":          `xcw tail -s "iPhone 17 Pro" -a com.example.myapp`,
-			"stream_background":    `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --tmux`,
-			"query_recent_errors":  `xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m -l error`,
+			"record_to_file":       `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --session-dir ~/.xcw/sessions`,
+			"analyze_session":      `xcw analyze $(xcw sessions show --latest)`,
 			"check_setup":          `xcw doctor`,
 		},
 		Commands: map[string]CommandDoc{

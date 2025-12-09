@@ -188,36 +188,38 @@ xcw sessions show --latest
 xcw sessions clean --keep 5
 ```
 
-### Example AI agent workflow
+### For AI agents
 
-Here's a typical workflow for a script-based agent (e.g. Codex):
+**Primary command: `xcw tail`** – AI agents should use `tail` for real-time log streaming.  This is the main command for monitoring app behavior.
 
-1. **Stream logs directly to stdout** so the agent can process each NDJSON line as soon as it arrives:
+**Choosing an output mode:**
 
-   ```sh
-   xcw tail -s "iPhone 17 Pro" -a com.example.myapp
-   ```
+| Mode | Command | Best for |
+|------|---------|----------|
+| **Stdout** | `xcw tail -a APP` | Script agents (Codex) that process NDJSON line-by-line |
+| **File** | `xcw tail -a APP --session-dir ~/.xcw/sessions` | Recording logs for later analysis with `xcw analyze` |
+| **Tmux** | `xcw tail -a APP --tmux` | Humans watching logs visually in a terminal |
 
-2. **Optionally write to file** using `--output` if you want to replay or share the session later:
+**Recommended AI agent workflow:**
 
-   ```sh
-   xcw tail -s "iPhone 17 Pro" -a com.example.myapp --output session.ndjson
-   ```
+```sh
+# 1. Start recording logs to a session file
+xcw tail -s "iPhone 17 Pro" -a com.example.myapp --session-dir ~/.xcw/sessions
 
-3. **Analyze or replay** recorded sessions on demand:
+# 2. After the test run, analyze the session
+xcw analyze $(xcw sessions show --latest)
+```
 
-   ```sh
-   xcw analyze session.ndjson
-   xcw replay session.ndjson --realtime
-   ```
+**When to use `xcw query`:**
 
-4. **Use tmux for persistent monitoring**: start a background session and query logs periodically while continuing other work.
+`query` reads from macOS unified logging (system logs), not from your recorded sessions.  Use it only when you forgot to start `tail` and need to check what happened in the last few minutes:
 
-   ```sh
-   xcw tail -s "iPhone 17 Pro" -a com.example.myapp --tmux
-   # later, query errors from the last 5 minutes only
-   xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m -l error
-   ```
+```sh
+# Check system logs from the last 5 minutes (not session files)
+xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m -l error
+```
+
+**Note:** `--tmux` is designed for human visual monitoring.  AI agents should prefer `--session-dir` or `--output` for programmatic access to recorded logs.
 
 ## Output format & JSON schema
 
@@ -260,18 +262,20 @@ The following flags apply to all commands:
 
 ## Designed for AI agents
 
-`xcw` was built with AI consumption in mind.  Key properties:
+`xcw` was built with AI consumption in mind.
 
-1. **Structured output** – NDJSON is easy to parse incrementally.
-2. **Schema versioning** – every record contains a `schemaVersion` so agents can handle future changes.
-3. **Summary markers** – periodic summaries include error counts and rates.
-4. **Pattern detection & persistence** – analysis mode groups similar errors and optionally persists known patterns.
-5. **File recording & replay support** – capture logs and replay them with original timing.
-6. **Tmux persistence** – background sessions persist across terminal tabs.
-7. **Non-interactive** – all commands accept flags; no interactive prompts are required for normal operation.
+**Start here:** Use `xcw tail` to stream logs.  Record to a file with `--session-dir` for later analysis.
+
+Key properties:
+
+1. **Primary command is `tail`** – stream logs in real-time; use `--session-dir` to record for analysis.
+2. **Structured NDJSON output** – easy to parse incrementally, one JSON object per line.
+3. **Schema versioning** – every record contains a `schemaVersion` so agents can handle future changes.
+4. **Session recording** – capture logs to timestamped files, analyze later with `xcw analyze`.
+5. **Pattern detection** – analysis mode groups similar errors and tracks new vs known patterns.
+6. **Non-interactive** – all commands accept flags; no interactive prompts required.
+7. **Self-documenting** – run `xcw help --json` for complete machine-readable documentation.
 8. **Self-diagnostics** – `xcw doctor` checks your environment and prints a diagnostics report.
-
-For a complete list of output types and fields, see the **NDJSON output types reference** in the official README or inspect the JSON schema.
 
 ## Requirements
 
