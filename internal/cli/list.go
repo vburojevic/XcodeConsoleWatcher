@@ -3,10 +3,14 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/vedranburojevic/xcw/internal/domain"
+	"github.com/vedranburojevic/xcw/internal/output"
 	"github.com/vedranburojevic/xcw/internal/simulator"
 )
 
@@ -58,36 +62,50 @@ func (c *ListCmd) outputNDJSON(globals *Globals, devices []domain.Device) error 
 
 func (c *ListCmd) outputText(globals *Globals, devices []domain.Device) error {
 	if len(devices) == 0 {
-		fmt.Fprintln(globals.Stdout, "No simulators found")
+		fmt.Fprintln(globals.Stdout, output.Styles.Warning.Render("No simulators found"))
 		return nil
 	}
 
-	// Print header
-	fmt.Fprintf(globals.Stdout, "%-40s %-12s %-15s %s\n", "NAME", "STATE", "RUNTIME", "UDID")
-	fmt.Fprintln(globals.Stdout, strings.Repeat("-", 100))
+	// Create table with options for clean output
+	table := tablewriter.NewTable(globals.Stdout,
+		tablewriter.WithHeader([]string{"NAME", "STATE", "RUNTIME", "UDID"}),
+		tablewriter.WithBorders(tw.Border{
+			Left:   tw.Off,
+			Right:  tw.Off,
+			Top:    tw.Off,
+			Bottom: tw.Off,
+		}),
+		tablewriter.WithHeaderAlignment(tw.AlignLeft),
+	)
 
-	for _, d := range devices {
-		stateIndicator := " "
-		if d.IsBooted() {
-			stateIndicator = "*"
-		}
-		fmt.Fprintf(globals.Stdout, "%-40s %s%-11s %-15s %s\n",
-			truncate(d.Name, 40),
-			stateIndicator,
-			d.State,
-			d.RuntimeIdentifier,
-			d.UDID,
-		)
-	}
-
-	// Print summary
 	bootedCount := 0
 	for _, d := range devices {
+		stateStr := string(d.State)
 		if d.IsBooted() {
+			stateStr = "● " + stateStr
 			bootedCount++
+		} else {
+			stateStr = "○ " + stateStr
 		}
+
+		table.Append([]string{
+			truncate(d.Name, 35),
+			stateStr,
+			d.RuntimeIdentifier,
+			d.UDID,
+		})
 	}
-	fmt.Fprintf(globals.Stdout, "\n%d simulator(s), %d booted\n", len(devices), bootedCount)
+
+	if err := table.Render(); err != nil {
+		return err
+	}
+
+	// Print summary with styling
+	fmt.Fprintf(globals.Stdout, "\n%s %s, %s\n",
+		output.Styles.Label.Render("Total:"),
+		output.Styles.Value.Render(fmt.Sprintf("%d simulator(s)", len(devices))),
+		output.Styles.Success.Render(fmt.Sprintf("%d booted", bootedCount)),
+	)
 
 	return nil
 }
@@ -99,7 +117,7 @@ func (c *ListCmd) outputError(globals *Globals, code, message string) error {
 		return encoder.Encode(errOutput)
 	}
 	fmt.Fprintf(globals.Stderr, "Error: %s\n", message)
-	return fmt.Errorf(message)
+	return errors.New(message)
 }
 
 func filterByRuntime(devices []domain.Device, runtime string) []domain.Device {

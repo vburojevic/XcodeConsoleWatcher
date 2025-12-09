@@ -14,14 +14,16 @@ import (
 
 // QueryOptions configures historical log queries
 type QueryOptions struct {
-	BundleID   string         // Filter by app bundle identifier
-	Subsystems []string       // Filter by subsystems
-	Categories []string       // Filter by categories
-	MinLevel   domain.LogLevel // Minimum log level
-	Pattern    *regexp.Regexp // Regex pattern for message filtering
-	Since      time.Duration  // How far back to query
-	Until      time.Time      // End time (default: now)
-	Limit      int            // Max entries to return
+	BundleID          string         // Filter by app bundle identifier
+	Subsystems        []string       // Filter by subsystems
+	Categories        []string       // Filter by categories
+	MinLevel          domain.LogLevel // Minimum log level
+	Pattern           *regexp.Regexp // Regex pattern for message filtering
+	ExcludePattern    *regexp.Regexp // Regex pattern to exclude from messages
+	ExcludeSubsystems []string       // Subsystems to exclude
+	Since             time.Duration  // How far back to query
+	Until             time.Time      // End time (default: now)
+	Limit             int            // Max entries to return
 }
 
 // QueryReader reads historical logs from a simulator
@@ -71,6 +73,16 @@ func (r *QueryReader) Query(ctx context.Context, udid string, opts QueryOptions)
 
 		// Apply pattern filter
 		if opts.Pattern != nil && !opts.Pattern.MatchString(entry.Message) {
+			continue
+		}
+
+		// Apply exclusion pattern filter
+		if opts.ExcludePattern != nil && opts.ExcludePattern.MatchString(entry.Message) {
+			continue
+		}
+
+		// Apply subsystem exclusion filter
+		if len(opts.ExcludeSubsystems) > 0 && shouldExcludeSubsystem(entry.Subsystem, opts.ExcludeSubsystems) {
 			continue
 		}
 
@@ -141,4 +153,20 @@ func formatDuration(d time.Duration) string {
 		return "1m"
 	}
 	return fmt.Sprintf("%dm", minutes)
+}
+
+// shouldExcludeSubsystem checks if a subsystem should be excluded
+func shouldExcludeSubsystem(subsystem string, excludeList []string) bool {
+	for _, excl := range excludeList {
+		// Support wildcard matching with *
+		if strings.HasSuffix(excl, "*") {
+			prefix := strings.TrimSuffix(excl, "*")
+			if strings.HasPrefix(subsystem, prefix) {
+				return true
+			}
+		} else if subsystem == excl {
+			return true
+		}
+	}
+	return false
 }

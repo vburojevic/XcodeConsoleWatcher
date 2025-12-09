@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/vedranburojevic/xcw/internal/output"
@@ -54,5 +55,5 @@ func (c *ClearCmd) outputError(globals *Globals, code, message string) error {
 	} else {
 		fmt.Fprintf(globals.Stderr, "Error [%s]: %s\n", code, message)
 	}
-	return fmt.Errorf(message)
+	return errors.New(message)
 }

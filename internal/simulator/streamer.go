@@ -15,12 +15,14 @@ import (
 
 // StreamOptions configures log streaming behavior
 type StreamOptions struct {
-	BundleID   string         // Filter by app bundle identifier
-	Subsystems []string       // Filter by subsystems
-	Categories []string       // Filter by categories
-	MinLevel   domain.LogLevel // Minimum log level
-	Pattern    *regexp.Regexp // Regex pattern for message filtering
-	BufferSize int            // Ring buffer size
+	BundleID          string         // Filter by app bundle identifier
+	Subsystems        []string       // Filter by subsystems
+	Categories        []string       // Filter by categories
+	MinLevel          domain.LogLevel // Minimum log level
+	Pattern           *regexp.Regexp // Regex pattern for message filtering
+	ExcludePattern    *regexp.Regexp // Regex pattern to exclude from messages
+	ExcludeSubsystems []string       // Subsystems to exclude
+	BufferSize        int            // Ring buffer size
 }
 
 // Streamer handles real-time log streaming from a simulator
@@ -209,6 +211,16 @@ func (s *Streamer) runLogStream(ctx context.Context) error {
 			continue
 		}
 
+		// Apply exclusion pattern filter
+		if s.opts.ExcludePattern != nil && s.opts.ExcludePattern.MatchString(entry.Message) {
+			continue
+		}
+
+		// Apply subsystem exclusion filter
+		if len(s.opts.ExcludeSubsystems) > 0 && s.shouldExcludeSubsystem(entry.Subsystem) {
+			continue
+		}
+
 		// Update stats
 		s.mu.Lock()
 		s.totalCount++
@@ -258,6 +270,22 @@ func (s *Streamer) buildPredicate() string {
 	}
 
 	return strings.Join(parts, " OR ")
+}
+
+// shouldExcludeSubsystem checks if a subsystem should be excluded
+func (s *Streamer) shouldExcludeSubsystem(subsystem string) bool {
+	for _, excl := range s.opts.ExcludeSubsystems {
+		// Support wildcard matching with *
+		if strings.HasSuffix(excl, "*") {
+			prefix := strings.TrimSuffix(excl, "*")
+			if strings.HasPrefix(subsystem, prefix) {
+				return true
+			}
+		} else if subsystem == excl {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Streamer) sendError(err error) {

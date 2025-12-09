@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"io"
@@ -18,15 +19,18 @@ import (
 
 // TailCmd streams real-time logs from a simulator
 type TailCmd struct {
-	Simulator       string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
-	App             string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Pattern         string   `short:"p" help:"Regex pattern to filter log messages"`
-	Subsystem       []string `help:"Filter by subsystem (can be repeated)"`
-	Category        []string `help:"Filter by category (can be repeated)"`
-	BufferSize      int      `default:"100" help:"Number of recent logs to buffer"`
-	SummaryInterval string   `help:"Emit periodic summaries (e.g., '30s', '1m')"`
-	Tmux            bool     `help:"Output to tmux session"`
-	Session         string   `help:"Custom tmux session name (default: xcw-<simulator>)"`
+	Simulator        string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
+	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
+	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
+	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
+	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
+	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
+	Category         []string `help:"Filter by category (can be repeated)"`
+	BufferSize       int      `default:"100" help:"Number of recent logs to buffer"`
+	SummaryInterval  string   `help:"Emit periodic summaries (e.g., '30s', '1m')"`
+	Heartbeat        string   `help:"Emit periodic heartbeat messages (e.g., '10s', '30s')"`
+	Tmux             bool     `help:"Output to tmux session"`
+	Session          string   `help:"Custom tmux session name (default: xcw-<simulator>)"`
 }
 
 // Run executes the tail command
@@ -43,11 +47,13 @@ func (c *TailCmd) Run(globals *Globals) error {
 	}()
 
 	// Find the simulator
+	globals.Debug("Finding simulator: %s", c.Simulator)
 	mgr := simulator.NewManager()
 	device, err := mgr.FindDevice(ctx, c.Simulator)
 	if err != nil {
 		return c.outputError(globals, "DEVICE_NOT_FOUND", err.Error())
 	}
+	globals.Debug("Found device: %s (UDID: %s, State: %s)", device.Name, device.UDID, device.State)
 
 	// Determine output destination
 	var outputWriter io.Writer = globals.Stdout
@@ -55,10 +61,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 	if c.Tmux {
 		// Setup tmux session
+		globals.Debug("Tmux mode enabled")
 		sessionName := c.Session
 		if sessionName == "" {
 			sessionName = tmux.GenerateSessionName(device.Name)
 		}
+		globals.Debug("Tmux session name: %s", sessionName)
 
 		if !tmux.IsTmuxAvailable() {
 			if !globals.Quiet {
@@ -117,7 +125,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			if c.Pattern != "" {
 				fmt.Fprintf(globals.Stderr, "Pattern filter: %s\n", c.Pattern)
 			}
-			fmt.Fprintln(globals.Stderr, "Press Ctrl+C to stop\n")
+			fmt.Fprintln(globals.Stderr, "Press Ctrl+C to stop")
 		}
 	}
 
@@ -131,26 +139,52 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 	}
 
+	// Compile exclude pattern regex if provided
+	var excludePattern *regexp.Regexp
+	if c.Exclude != "" {
+		var err error
+		excludePattern, err = regexp.Compile(c.Exclude)
+		if err != nil {
+			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern: %s", err))
+		}
+	}
+
 	// Create streamer
 	streamer := simulator.NewStreamer(mgr)
 	opts := simulator.StreamOptions{
-		BundleID:   c.App,
-		Subsystems: c.Subsystem,
-		Categories: c.Category,
-		MinLevel:   domain.ParseLogLevel(globals.Level),
-		Pattern:    pattern,
-		BufferSize: c.BufferSize,
+		BundleID:          c.App,
+		Subsystems:        c.Subsystem,
+		Categories:        c.Category,
+		MinLevel:          domain.ParseLogLevel(globals.Level),
+		Pattern:           pattern,
+		ExcludePattern:    excludePattern,
+		ExcludeSubsystems: c.ExcludeSubsystem,
+		BufferSize:        c.BufferSize,
 	}
 
+	globals.Debug("Stream options: BundleID=%s, MinLevel=%s, BufferSize=%d", opts.BundleID, opts.MinLevel, opts.BufferSize)
+	if opts.Pattern != nil {
+		globals.Debug("Pattern filter: %s", opts.Pattern.String())
+	}
+	if opts.ExcludePattern != nil {
+		globals.Debug("Exclude pattern: %s", opts.ExcludePattern.String())
+	}
+	if len(opts.ExcludeSubsystems) > 0 {
+		globals.Debug("Exclude subsystems: %v", opts.ExcludeSubsystems)
+	}
+
+	globals.Debug("Starting log stream...")
 	if err := streamer.Start(ctx, device.UDID, opts); err != nil {
 		return c.outputError(globals, "STREAM_FAILED", err.Error())
 	}
 	defer streamer.Stop()
+	globals.Debug("Log stream started successfully")
 
 	// Create output writer based on format
 	var writer interface {
 		Write(entry *domain.LogEntry) error
 		WriteSummary(summary *domain.LogSummary) error
+		WriteHeartbeat(h *output.Heartbeat) error
 	}
 
 	if globals.Format == "ndjson" {
@@ -170,6 +204,21 @@ func (c *TailCmd) Run(globals *Globals) error {
 		defer summaryTicker.Stop()
 	}
 
+	// Parse heartbeat interval
+	var heartbeatTicker *time.Ticker
+	if c.Heartbeat != "" {
+		interval, err := time.ParseDuration(c.Heartbeat)
+		if err != nil {
+			return c.outputError(globals, "INVALID_HEARTBEAT", fmt.Sprintf("invalid heartbeat interval: %s", err))
+		}
+		heartbeatTicker = time.NewTicker(interval)
+		defer heartbeatTicker.Stop()
+	}
+
+	// Track metrics for heartbeat
+	startTime := time.Now()
+	logsSinceLast := 0
+
 	// Process logs
 	for {
 		select {
@@ -182,6 +231,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			if err := writer.Write(&entry); err != nil {
 				return err
 			}
+			logsSinceLast++
 
 		case err := <-streamer.Errors():
 			if !globals.Quiet {
@@ -199,6 +249,21 @@ func (c *TailCmd) Run(globals *Globals) error {
 			return nil
 		}():
 			c.outputSummary(writer, streamer)
+
+		case <-func() <-chan time.Time {
+			if heartbeatTicker != nil {
+				return heartbeatTicker.C
+			}
+			return nil
+		}():
+			heartbeat := &output.Heartbeat{
+				Type:          "heartbeat",
+				Timestamp:     time.Now().Format(time.RFC3339Nano),
+				UptimeSeconds: int64(time.Since(startTime).Seconds()),
+				LogsSinceLast: logsSinceLast,
+			}
+			writer.WriteHeartbeat(heartbeat)
+			logsSinceLast = 0
 		}
 	}
 }
@@ -224,5 +289,5 @@ func (c *TailCmd) outputError(globals *Globals, code, message string) error {
 	} else {
 		fmt.Fprintf(globals.Stderr, "Error [%s]: %s\n", code, message)
 	}
-	return fmt.Errorf(message)
+	return errors.New(message)
 }

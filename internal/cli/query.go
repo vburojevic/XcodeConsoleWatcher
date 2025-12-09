@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"context"
 	"fmt"
 	"regexp"
@@ -13,15 +14,17 @@ import (
 
 // QueryCmd queries historical logs from a simulator
 type QueryCmd struct {
-	Simulator string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
-	App       string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Since     string   `default:"5m" help:"How far back to query (e.g., '5m', '1h', '30s')"`
-	Until     string   `help:"End time for query (RFC3339 or relative like '1m')"`
-	Pattern   string   `short:"p" help:"Regex pattern to filter log messages"`
-	Limit     int      `default:"1000" help:"Maximum number of logs to return"`
-	Subsystem []string `help:"Filter by subsystem (can be repeated)"`
-	Category  []string `help:"Filter by category (can be repeated)"`
-	Analyze   bool     `help:"Include AI-friendly analysis summary"`
+	Simulator        string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
+	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
+	Since            string   `default:"5m" help:"How far back to query (e.g., '5m', '1h', '30s')"`
+	Until            string   `help:"End time for query (RFC3339 or relative like '1m')"`
+	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
+	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
+	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
+	Limit            int      `default:"1000" help:"Maximum number of logs to return"`
+	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
+	Category         []string `help:"Filter by category (can be repeated)"`
+	Analyze          bool     `help:"Include AI-friendly analysis summary"`
 }
 
 // Run executes the query command
@@ -29,11 +32,13 @@ func (c *QueryCmd) Run(globals *Globals) error {
 	ctx := context.Background()
 
 	// Find the simulator
+	globals.Debug("Finding simulator: %s", c.Simulator)
 	mgr := simulator.NewManager()
 	device, err := mgr.FindDevice(ctx, c.Simulator)
 	if err != nil {
 		return c.outputError(globals, "DEVICE_NOT_FOUND", err.Error())
 	}
+	globals.Debug("Found device: %s (UDID: %s)", device.Name, device.UDID)
 
 	// Parse since duration
 	since, err := time.ParseDuration(c.Since)
@@ -47,6 +52,15 @@ func (c *QueryCmd) Run(globals *Globals) error {
 		pattern, err = regexp.Compile(c.Pattern)
 		if err != nil {
 			return c.outputError(globals, "INVALID_PATTERN", fmt.Sprintf("invalid regex pattern: %s", err))
+		}
+	}
+
+	// Compile exclude pattern regex if provided
+	var excludePattern *regexp.Regexp
+	if c.Exclude != "" {
+		excludePattern, err = regexp.Compile(c.Exclude)
+		if err != nil {
+			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern: %s", err))
 		}
 	}
 
@@ -65,20 +79,25 @@ func (c *QueryCmd) Run(globals *Globals) error {
 	// Create query reader
 	reader := simulator.NewQueryReader()
 	opts := simulator.QueryOptions{
-		BundleID:   c.App,
-		Subsystems: c.Subsystem,
-		Categories: c.Category,
-		MinLevel:   domain.ParseLogLevel(globals.Level),
-		Pattern:    pattern,
-		Since:      since,
-		Limit:      c.Limit,
+		BundleID:          c.App,
+		Subsystems:        c.Subsystem,
+		Categories:        c.Category,
+		MinLevel:          domain.ParseLogLevel(globals.Level),
+		Pattern:           pattern,
+		ExcludePattern:    excludePattern,
+		ExcludeSubsystems: c.ExcludeSubsystem,
+		Since:             since,
+		Limit:             c.Limit,
 	}
 
 	// Execute query
+	globals.Debug("Query options: BundleID=%s, Since=%s, Limit=%d", opts.BundleID, opts.Since, opts.Limit)
+	globals.Debug("Executing query...")
 	entries, err := reader.Query(ctx, device.UDID, opts)
 	if err != nil {
 		return c.outputError(globals, "QUERY_FAILED", err.Error())
 	}
+	globals.Debug("Query returned %d entries", len(entries))
 
 	// Create output writer
 	if globals.Format == "ndjson" {
@@ -138,5 +157,5 @@ func (c *QueryCmd) outputError(globals *Globals, code, message string) error {
 	} else {
 		fmt.Fprintf(globals.Stderr, "Error [%s]: %s\n", code, message)
 	}
-	return fmt.Errorf(message)
+	return errors.New(message)
 }

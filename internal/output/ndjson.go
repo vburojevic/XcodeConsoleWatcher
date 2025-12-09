@@ -33,6 +33,14 @@ type OutputEntry struct {
 	Message   string `json:"message"`
 }
 
+// Heartbeat is a keepalive message for AI agents
+type Heartbeat struct {
+	Type          string `json:"type"`
+	Timestamp     string `json:"timestamp"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	LogsSinceLast int    `json:"logs_since_last"`
+}
+
 // Write outputs a single log entry as NDJSON
 func (w *NDJSONWriter) Write(entry *domain.LogEntry) error {
 	out := OutputEntry{
@@ -62,6 +70,11 @@ func (w *NDJSONWriter) WriteRaw(v interface{}) error {
 	return w.encoder.Encode(v)
 }
 
+// WriteHeartbeat outputs a heartbeat keepalive message
+func (w *NDJSONWriter) WriteHeartbeat(h *Heartbeat) error {
+	return w.encoder.Encode(h)
+}
+
 // TextWriter writes log entries as formatted text
 type TextWriter struct {
 	w io.Writer
@@ -72,38 +85,70 @@ func NewTextWriter(w io.Writer) *TextWriter {
 	return &TextWriter{w: w}
 }
 
-// Write outputs a single log entry as text
+// Write outputs a single log entry as styled text
 func (w *TextWriter) Write(entry *domain.LogEntry) error {
-	levelIndicator := getLevelIndicator(entry.Level)
-	timestamp := entry.Timestamp.Format("15:04:05.000")
+	// Use lipgloss styled output
+	levelStr := string(entry.Level)
+	levelIndicator := LevelIndicator(levelStr)
+	timestamp := Styles.Timestamp.Render(entry.Timestamp.Format("15:04:05.000"))
+	process := Styles.Process.Render("[" + entry.Process + "]")
 
-	line := timestamp + " " + levelIndicator + " [" + entry.Process + "] "
+	line := timestamp + " " + levelIndicator + " " + process + " "
 	if entry.Subsystem != "" {
-		line += entry.Subsystem
+		subsystem := Styles.Subsystem.Render(entry.Subsystem)
 		if entry.Category != "" {
-			line += "/" + entry.Category
+			subsystem += "/" + entry.Category
 		}
-		line += ": "
+		line += subsystem + ": "
 	}
-	line += entry.Message + "\n"
+
+	// Style message based on level
+	msgStyle := LevelStyle(levelStr)
+	line += msgStyle.Render(entry.Message) + "\n"
 
 	_, err := io.WriteString(w.w, line)
 	return err
 }
 
-// WriteSummary outputs a summary as text
+// WriteSummary outputs a styled summary
 func (w *TextWriter) WriteSummary(summary *domain.LogSummary) error {
-	line := "\n--- Summary ---\n"
-	line += "Total: " + itoa(summary.TotalCount) + " | "
-	line += "Errors: " + itoa(summary.ErrorCount) + " | "
-	line += "Faults: " + itoa(summary.FaultCount) + "\n"
+	header := Styles.Header.Render("Summary")
+	line := "\n" + header + "\n"
+	line += Styles.Label.Render("Total: ") + Styles.Value.Render(itoa(summary.TotalCount)) + " | "
+
+	// Color errors/faults based on count
+	if summary.ErrorCount > 0 {
+		line += Styles.Warning.Render("Errors: "+itoa(summary.ErrorCount)) + " | "
+	} else {
+		line += Styles.Label.Render("Errors: ") + Styles.Value.Render(itoa(summary.ErrorCount)) + " | "
+	}
+
+	if summary.FaultCount > 0 {
+		line += Styles.Danger.Render("Faults: " + itoa(summary.FaultCount))
+	} else {
+		line += Styles.Label.Render("Faults: ") + Styles.Value.Render(itoa(summary.FaultCount))
+	}
+	line += "\n"
+
 	_, err := io.WriteString(w.w, line)
 	return err
 }
 
-// WriteError outputs an error as text
+// WriteError outputs a styled error
 func (w *TextWriter) WriteError(code, message string) error {
-	_, err := io.WriteString(w.w, "Error ["+code+"]: "+message+"\n")
+	errorLabel := Styles.Danger.Render("Error")
+	codeStr := Styles.Warning.Render("[" + code + "]")
+	line := errorLabel + " " + codeStr + ": " + message + "\n"
+	_, err := io.WriteString(w.w, line)
+	return err
+}
+
+// WriteHeartbeat outputs a styled heartbeat
+func (w *TextWriter) WriteHeartbeat(h *Heartbeat) error {
+	label := Styles.Info.Render("[HEARTBEAT]")
+	line := label + " " + Styles.Label.Render("uptime=") + Styles.Value.Render(itoa(int(h.UptimeSeconds))+"s")
+	line += " " + Styles.Label.Render("logs_since_last=") + Styles.Value.Render(itoa(h.LogsSinceLast)) + "\n"
+	_, err := io.WriteString(w.w, line)
 	return err
 }
 
