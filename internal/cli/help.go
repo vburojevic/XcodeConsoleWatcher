@@ -138,6 +138,17 @@ func buildDocumentation() *HelpOutput {
 				},
 				OutputTypes: []string{"app", "error"},
 			},
+			"launch": {
+				Description: "Launch an app and capture stdout/stderr (print statements). Use this when you need to see print() output that isn't captured by unified logging.",
+				Usage:       "xcw launch -s SIMULATOR -a APP [flags]",
+				Examples: []ExampleDoc{
+					{Command: `xcw launch -s "iPhone 17 Pro" -a com.example.myapp`, Description: "Launch and capture stdout/stderr"},
+					{Command: `xcw launch -s "iPhone 17 Pro" -a com.example.myapp --terminate-existing`, Description: "Terminate existing instance first"},
+					{Command: `xcw launch -b -a com.example.myapp`, Description: "Launch on booted simulator"},
+				},
+				OutputTypes:     []string{"console", "info", "error"},
+				RelatedCommands: []string{"tail", "apps"},
+			},
 			"doctor": {
 				Description: "Check system requirements and configuration",
 				Usage:       "xcw doctor",
@@ -260,6 +271,18 @@ func buildDocumentation() *HelpOutput {
 					"logs_since_last": 42,
 				},
 				When: "Periodically when --heartbeat is used",
+			},
+			"console": {
+				Description: "Console output (stdout/stderr) from xcw launch. Captures print() statements not available via unified logging.",
+				Example: map[string]interface{}{
+					"type":          "console",
+					"schemaVersion": 1,
+					"timestamp":     "2024-01-15T10:30:45.123Z",
+					"stream":        "stdout",
+					"message":       "Hello from print()",
+					"process":       "com.example.myapp",
+				},
+				When: "Each line of stdout/stderr from xcw launch",
 			},
 			"error": {
 				Description: "Error from xcw (not the app being monitored)",

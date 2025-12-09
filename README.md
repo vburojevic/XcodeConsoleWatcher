@@ -139,6 +139,37 @@ xcw query -a com.example.myapp --since 1h -l error
 xcw query -a com.example.myapp --since 1h --analyze --persist-patterns
 ```
 
+## Capturing print() statements
+
+`xcw tail` uses macOS unified logging, which captures `Logger`, `os_log`, and `NSLog` calls.  Swift `print()` statements go to stdout and are **not captured by unified logging**.
+
+To capture print() output, use `xcw launch`:
+
+```sh
+# launch app and capture stdout/stderr
+xcw launch -s "iPhone 17 Pro" -a com.example.myapp
+
+# terminate any existing instance first
+xcw launch -s "iPhone 17 Pro" -a com.example.myapp --terminate-existing
+```
+
+**Output format:**
+
+```json
+{"type":"console","schemaVersion":1,"timestamp":"2024-01-15T10:30:45Z","stream":"stdout","message":"Hello from print()","process":"com.example.myapp"}
+```
+
+**Recommendation:** For best results with `xcw`, use Swift's `Logger` API instead of `print()`:
+
+```swift
+import OSLog
+
+let logger = Logger(subsystem: "com.example.myapp", category: "general")
+logger.info("This message appears in xcw tail")
+```
+
+`Logger` provides log levels, subsystem filtering, and persistence — all accessible via `xcw tail` and `xcw query`.
+
 ## Recording, analyzing and replaying sessions
 
 ```sh
@@ -223,7 +254,7 @@ xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m -l error
 
 ## Output format & JSON schema
 
-By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Types include `log`, `summary`, `analysis`, `heartbeat`, `error`, `info`, `warning`, `tmux`, `trigger`, `app`, `doctor`, `pick` and `session`.  The current schema version is `1`.
+By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Types include `log`, `console`, `summary`, `analysis`, `heartbeat`, `error`, `info`, `warning`, `tmux`, `trigger`, `app`, `doctor`, `pick` and `session`.  The current schema version is `1`.
 
 Example log entry:
 

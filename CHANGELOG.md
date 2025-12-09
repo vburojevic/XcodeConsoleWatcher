@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2024-12-09
+
+### Added
+- `xcw launch` command - Launch app and capture stdout/stderr (print statements)
+  - Captures print() output not available via unified logging
+  - Outputs NDJSON with type "console" and stream "stdout" or "stderr"
+  - Supports `--terminate-existing` to kill existing app instance first
+  - Supports `-w/--wait` to wait for debugger to attach
+
+### Changed
+- Updated documentation to explain difference between `tail` (unified logging) and `launch` (stdout/stderr)
+- Added recommendation to use Logger/os_log instead of print() for best xcw compatibility
+
 ## [0.3.0] - 2024-12-09
 
 ### Added

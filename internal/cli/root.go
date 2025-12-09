@@ -28,6 +28,7 @@ type CLI struct {
 	Watch      WatchCmd      `cmd:"" help:"Watch logs and trigger commands on patterns"`
 	Clear      ClearCmd      `cmd:"" help:"Clear tmux session content"`
 	Apps       AppsCmd       `cmd:"" help:"List installed apps on a simulator"`
+	Launch     LaunchCmd     `cmd:"" help:"Launch app and capture stdout/stderr (print statements)"`
 	Pick       PickCmd       `cmd:"" help:"Interactively pick a simulator or app"`
 	Analyze    AnalyzeCmd    `cmd:"" help:"Analyze a recorded NDJSON log file"`
 	Replay     ReplayCmd     `cmd:"" help:"Replay a recorded NDJSON log file"`
