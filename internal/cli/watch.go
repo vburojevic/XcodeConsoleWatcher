@@ -21,7 +21,8 @@ import (
 
 // WatchCmd watches logs and triggers commands on specific patterns
 type WatchCmd struct {
-	Simulator        string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
+	Simulator        string   `short:"s" help:"Simulator name or UDID"`
+	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
 	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
 	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
@@ -73,9 +74,19 @@ func (c *WatchCmd) Run(globals *Globals) error {
 		triggers = append(triggers, triggerConfig{pattern: re, command: parts[1]})
 	}
 
+	// Validate mutual exclusivity of flags
+	if c.Simulator != "" && c.Booted {
+		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
+	}
+
 	// Find the simulator
 	mgr := simulator.NewManager()
-	device, err := mgr.FindDevice(ctx, c.Simulator)
+	var device *domain.Device
+	if c.Simulator != "" {
+		device, err = mgr.FindDevice(ctx, c.Simulator)
+	} else {
+		device, err = mgr.FindBootedDevice(ctx)
+	}
 	if err != nil {
 		return c.outputError(globals, "DEVICE_NOT_FOUND", err.Error())
 	}

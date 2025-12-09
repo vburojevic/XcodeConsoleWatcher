@@ -14,7 +14,8 @@ import (
 
 // QueryCmd queries historical logs from a simulator
 type QueryCmd struct {
-	Simulator        string   `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
+	Simulator        string   `short:"s" help:"Simulator name or UDID"`
+	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
 	Since            string   `default:"5m" help:"How far back to query (e.g., '5m', '1h', '30s')"`
 	Until            string   `help:"End time for query (RFC3339 or relative like '1m')"`
@@ -31,10 +32,23 @@ type QueryCmd struct {
 func (c *QueryCmd) Run(globals *Globals) error {
 	ctx := context.Background()
 
+	// Validate mutual exclusivity of flags
+	if c.Simulator != "" && c.Booted {
+		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
+	}
+
 	// Find the simulator
-	globals.Debug("Finding simulator: %s", c.Simulator)
 	mgr := simulator.NewManager()
-	device, err := mgr.FindDevice(ctx, c.Simulator)
+	var device *domain.Device
+	var err error
+
+	if c.Simulator != "" {
+		globals.Debug("Finding simulator by name/UDID: %s", c.Simulator)
+		device, err = mgr.FindDevice(ctx, c.Simulator)
+	} else {
+		globals.Debug("Finding booted simulator (auto-detect)")
+		device, err = mgr.FindBootedDevice(ctx)
+	}
 	if err != nil {
 		return c.outputError(globals, "DEVICE_NOT_FOUND", err.Error())
 	}

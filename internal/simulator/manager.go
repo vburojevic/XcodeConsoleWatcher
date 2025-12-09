@@ -89,21 +89,39 @@ func (m *Manager) ListBootedDevices(ctx context.Context) ([]domain.Device, error
 	return booted, nil
 }
 
+// MultipleBootedError indicates multiple simulators are booted
+type MultipleBootedError struct {
+	Devices []domain.Device
+}
+
+func (e *MultipleBootedError) Error() string {
+	var names []string
+	for _, d := range e.Devices {
+		names = append(names, fmt.Sprintf("%s (%s)", d.Name, d.UDID))
+	}
+	return fmt.Sprintf("multiple booted simulators found:\n  %s\nUse --simulator to specify one", strings.Join(names, "\n  "))
+}
+
+// FindBootedDevice finds a single booted device, errors if 0 or multiple
+func (m *Manager) FindBootedDevice(ctx context.Context) (*domain.Device, error) {
+	booted, err := m.ListBootedDevices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(booted) == 0 {
+		return nil, fmt.Errorf("no booted simulator found")
+	}
+	if len(booted) > 1 {
+		return nil, &MultipleBootedError{Devices: booted}
+	}
+	return &booted[0], nil
+}
+
 // FindDevice finds a device by name or UDID
 func (m *Manager) FindDevice(ctx context.Context, nameOrUDID string) (*domain.Device, error) {
 	devices, err := m.ListDevices(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	// Handle "booted" special case - return first booted device
-	if strings.ToLower(nameOrUDID) == "booted" {
-		for _, d := range devices {
-			if d.IsBooted() {
-				return &d, nil
-			}
-		}
-		return nil, fmt.Errorf("no booted simulator found")
 	}
 
 	nameOrUDIDLower := strings.ToLower(nameOrUDID)

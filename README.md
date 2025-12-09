@@ -54,17 +54,29 @@ xcw list -f ndjson
 ### Tail Logs (Real-time)
 
 ```bash
-# Tail logs from booted simulator for your app
+# Tail logs from booted simulator (auto-detects single booted simulator)
 xcw tail -a com.example.myapp
 
-# With regex pattern filtering
-xcw tail -a com.example.myapp -p "error|warning"
+# Explicitly use booted simulator
+xcw tail -a com.example.myapp --booted
 
 # Specific simulator by name
 xcw tail -s "iPhone 15 Pro" -a com.example.myapp
 
+# Specific simulator by UDID
+xcw tail -s "ABC123-DEF456-..." -a com.example.myapp
+
+# With regex pattern filtering
+xcw tail -a com.example.myapp -p "error|warning"
+
+# Exclude noisy logs
+xcw tail -a com.example.myapp -x "heartbeat|keepalive"
+
 # With periodic AI summaries every 30 seconds
 xcw tail -a com.example.myapp --summary-interval 30s
+
+# With heartbeat messages for connection health
+xcw tail -a com.example.myapp --heartbeat 10s
 
 # Output to tmux session
 xcw tail -a com.example.myapp --tmux
@@ -134,16 +146,29 @@ Stream real-time logs from a simulator.
 
 ```
 FLAGS:
-  -s, --simulator=STRING   Simulator name, UDID, or 'booted' (default: booted)
+  -s, --simulator=STRING   Simulator name or UDID
+  -b, --booted             Use booted simulator (error if multiple)
   -a, --app=STRING         App bundle identifier (required)
   -p, --pattern=STRING     Regex pattern to filter messages
+  -x, --exclude=STRING     Regex pattern to exclude from messages
+      --exclude-subsystem  Exclude logs from subsystem (repeatable)
       --subsystem=STRING   Filter by subsystem (repeatable)
       --category=STRING    Filter by category (repeatable)
       --buffer-size=INT    Recent logs buffer (default: 100)
       --summary-interval=  Emit periodic summaries (e.g., '30s')
+      --heartbeat=STRING   Emit periodic heartbeat messages (e.g., '10s')
       --tmux               Output to tmux session
       --session=STRING     Custom tmux session name
 ```
+
+**Simulator Selection Behavior:**
+
+| `--simulator` | `--booted` | Behavior |
+|---------------|------------|----------|
+| not set | not set | Auto-detect: use single booted simulator, error if 0 or multiple |
+| set | not set | Use specified simulator by name or UDID |
+| not set | set | Use booted simulator, error if multiple |
+| set | set | Error: flags are mutually exclusive |
 
 ### `xcw query`
 
@@ -151,11 +176,14 @@ Query historical logs from a simulator.
 
 ```
 FLAGS:
-  -s, --simulator=STRING   Simulator name, UDID, or 'booted' (default: booted)
+  -s, --simulator=STRING   Simulator name or UDID
+  -b, --booted             Use booted simulator (error if multiple)
   -a, --app=STRING         App bundle identifier (required)
       --since=STRING       How far back to query (default: 5m)
       --until=STRING       End time for query
   -p, --pattern=STRING     Regex pattern to filter messages
+  -x, --exclude=STRING     Regex pattern to exclude from messages
+      --exclude-subsystem  Exclude logs from subsystem (repeatable)
       --limit=INT          Maximum logs to return (default: 1000)
       --analyze            Include AI-friendly analysis summary
 ```
@@ -175,6 +203,7 @@ FLAGS:
   -f, --format=STRING      Output format: ndjson, text (default: ndjson)
   -l, --level=STRING       Min log level: debug, info, default, error, fault
   -q, --quiet              Suppress non-log output
+  -v, --verbose            Show debug output (predicates, reconnections)
 ```
 
 ## For AI Agents
