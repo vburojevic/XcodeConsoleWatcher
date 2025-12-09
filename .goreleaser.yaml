@@ -48,7 +48,7 @@ brews:
       owner: vburojevic
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: "https://github.com/vburojevic/xcw"
     description: "Tail iOS Simulator logs for AI agents"
     license: "MIT"
