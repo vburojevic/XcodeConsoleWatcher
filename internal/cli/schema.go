@@ -27,12 +27,13 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 		"doctor":    doctorSchema(),
 		"app":       appSchema(),
 		"pick":      pickSchema(),
+		"update":    updateSchema(),
 	}
 
 	// Determine which schemas to output
 	typesToOutput := c.Type
 	if len(typesToOutput) == 0 {
-		typesToOutput = []string{"log", "summary", "heartbeat", "error", "tmux", "info", "warning", "trigger", "doctor", "app", "pick"}
+		typesToOutput = []string{"log", "summary", "heartbeat", "error", "tmux", "info", "warning", "trigger", "doctor", "app", "pick", "update"}
 	}
 
 	// Build output
@@ -493,6 +494,43 @@ func pickSchema() map[string]interface{} {
 	}
 }
 
+func updateSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "object",
+		"title":       "Update Instructions",
+		"description": "Instructions for upgrading xcw",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":  "string",
+				"const": "update",
+			},
+			"schemaVersion": schemaVersionProperty(),
+			"current_version": map[string]interface{}{
+				"type":        "string",
+				"description": "Currently installed version",
+			},
+			"commit": map[string]interface{}{
+				"type":        "string",
+				"description": "Git commit hash of current version",
+			},
+			"homebrew": map[string]interface{}{
+				"type":        "string",
+				"description": "Command to upgrade via Homebrew",
+			},
+			"go_install": map[string]interface{}{
+				"type":        "string",
+				"description": "Command to upgrade via Go install",
+			},
+			"releases_url": map[string]interface{}{
+				"type":        "string",
+				"format":      "uri",
+				"description": "URL to release notes",
+			},
+		},
+		"required": []string{"type", "schemaVersion", "current_version", "homebrew", "go_install", "releases_url"},
+	}
+}
+
 // Helper to output a quick reference
 func (c *SchemaCmd) outputTextHelp(globals *Globals) {
 	fmt.Fprintln(globals.Stdout, "XcodeConsoleWatcher Output Types:")
@@ -508,6 +546,7 @@ func (c *SchemaCmd) outputTextHelp(globals *Globals) {
 	fmt.Fprintln(globals.Stdout, "  doctor    - System diagnostic report")
 	fmt.Fprintln(globals.Stdout, "  app       - Installed app info")
 	fmt.Fprintln(globals.Stdout, "  pick      - Interactive selection result")
+	fmt.Fprintln(globals.Stdout, "  update    - Upgrade instructions")
 	fmt.Fprintln(globals.Stdout, "")
 	fmt.Fprintln(globals.Stdout, "Use --type to filter: xcw schema --type log,error")
 }

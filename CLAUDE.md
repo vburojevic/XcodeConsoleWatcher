@@ -77,3 +77,23 @@ Tests use testify (`assert`, `require`). See `internal/simulator/manager_test.go
 2. **Update README.md** - Document new flags, commands, or behavior changes
 3. **Run tests** - `go test ./...` must pass before committing
 4. **Commit and push often** - After completing any logical unit of work, commit and push to keep the repository up to date
+
+## Versioning & Changelog
+
+**Version management:**
+- Version is injected at build time via Makefile ldflags from git tags
+- To release a new version: `git tag v1.2.3 && git push --tags`
+- Use semantic versioning: MAJOR.MINOR.PATCH
+
+**Changelog maintenance:**
+- Update `CHANGELOG.md` when adding features, fixing bugs, or making breaking changes
+- Follow [Keep a Changelog](https://keepachangelog.com) format
+- Add entries under `[Unreleased]` section during development
+- Move unreleased entries to versioned section when tagging a release
+
+**When to update CHANGELOG.md:**
+- New commands or flags
+- Bug fixes
+- Breaking changes
+- Significant improvements
+- Dependency updates that affect functionality

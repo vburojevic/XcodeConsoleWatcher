@@ -16,6 +16,7 @@ type CLI struct {
 	Quiet   bool   `short:"q" help:"Suppress non-log output (only emit log entries)"`
 	Verbose bool   `short:"v" help:"Show debug output (predicates, reconnections, internal state)"`
 	Version VersionCmd `cmd:"" help:"Show version information"`
+	Update  UpdateCmd  `cmd:"" help:"Show how to upgrade xcw"`
 
 	// Commands
 	List       ListCmd       `cmd:"" help:"List available simulators"`
@@ -25,6 +26,7 @@ type CLI struct {
 	Watch      WatchCmd      `cmd:"" help:"Watch logs and trigger commands on patterns"`
 	Clear      ClearCmd      `cmd:"" help:"Clear tmux session content"`
 	Apps       AppsCmd       `cmd:"" help:"List installed apps on a simulator"`
+	Pick       PickCmd       `cmd:"" help:"Interactively pick a simulator or app"`
 	Analyze    AnalyzeCmd    `cmd:"" help:"Analyze a recorded NDJSON log file"`
 	Replay     ReplayCmd     `cmd:"" help:"Replay a recorded NDJSON log file"`
 	Schema     SchemaCmd     `cmd:"" help:"Output JSON Schema for xcw output types"`

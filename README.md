@@ -392,6 +392,40 @@ FLAGS:
       --buffer-size=INT    Number of logs to buffer (default: 1000)
 ```
 
+### `xcw version`
+
+Show version information.
+
+```bash
+xcw version           # Text output: xcw version v1.0.0 (abc1234)
+xcw version -f ndjson # NDJSON output with version and commit
+```
+
+### `xcw update`
+
+Show how to upgrade xcw.
+
+```bash
+xcw update            # Text instructions for Homebrew and Go install
+xcw update -f ndjson  # NDJSON output with upgrade commands
+```
+
+**Example output:**
+```
+xcw update instructions
+
+Current version: v1.0.0 (abc1234)
+
+To upgrade via Homebrew:
+  brew update && brew upgrade xcw
+
+To upgrade via Go:
+  go install github.com/vburojevic/xcw/cmd/xcw@latest
+
+For release notes, see:
+  https://github.com/vburojevic/xcw/releases
+```
+
 ## Global Flags
 
 ```
