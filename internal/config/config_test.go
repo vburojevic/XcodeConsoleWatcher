@@ -175,3 +175,116 @@ func TestDefaultsConfig(t *testing.T) {
 	assert.Len(t, defaults.Subsystems, 2)
 	assert.Len(t, defaults.Categories, 1)
 }
+
+func TestFindConfigFile(t *testing.T) {
+	t.Run("finds .xcw.yaml in current directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir, _ := os.Getwd()
+		os.Chdir(tmpDir)
+		defer os.Chdir(origDir)
+
+		// Create config file
+		configPath := filepath.Join(tmpDir, ".xcw.yaml")
+		err := os.WriteFile(configPath, []byte("format: text"), 0644)
+		require.NoError(t, err)
+
+		found := findConfigFile()
+		// Resolve symlinks for comparison (macOS /var -> /private/var)
+		expectedPath, _ := filepath.EvalSymlinks(configPath)
+		foundPath, _ := filepath.EvalSymlinks(found)
+		assert.Equal(t, expectedPath, foundPath)
+	})
+
+	t.Run("finds .xcw.yml in current directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir, _ := os.Getwd()
+		os.Chdir(tmpDir)
+		defer os.Chdir(origDir)
+
+		configPath := filepath.Join(tmpDir, ".xcw.yml")
+		err := os.WriteFile(configPath, []byte("format: text"), 0644)
+		require.NoError(t, err)
+
+		found := findConfigFile()
+		expectedPath, _ := filepath.EvalSymlinks(configPath)
+		foundPath, _ := filepath.EvalSymlinks(found)
+		assert.Equal(t, expectedPath, foundPath)
+	})
+
+	t.Run("prefers .xcw.yaml over .xcw.yml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir, _ := os.Getwd()
+		os.Chdir(tmpDir)
+		defer os.Chdir(origDir)
+
+		// Create both files
+		yamlPath := filepath.Join(tmpDir, ".xcw.yaml")
+		ymlPath := filepath.Join(tmpDir, ".xcw.yml")
+		err := os.WriteFile(yamlPath, []byte("format: yaml"), 0644)
+		require.NoError(t, err)
+		err = os.WriteFile(ymlPath, []byte("format: yml"), 0644)
+		require.NoError(t, err)
+
+		found := findConfigFile()
+		expectedPath, _ := filepath.EvalSymlinks(yamlPath)
+		foundPath, _ := filepath.EvalSymlinks(found)
+		assert.Equal(t, expectedPath, foundPath)
+	})
+
+	t.Run("returns empty string when no config found", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		origDir, _ := os.Getwd()
+		os.Chdir(tmpDir)
+		defer os.Chdir(origDir)
+
+		found := findConfigFile()
+		assert.Empty(t, found)
+	})
+}
+
+func TestApplyEnvOverrides(t *testing.T) {
+	t.Run("overrides format from env", func(t *testing.T) {
+		cfg := Default()
+		os.Setenv("XCW_FORMAT", "text")
+		defer os.Unsetenv("XCW_FORMAT")
+
+		applyEnvOverrides(cfg)
+		assert.Equal(t, "text", cfg.Format)
+	})
+
+	t.Run("overrides quiet from env with true", func(t *testing.T) {
+		cfg := Default()
+		os.Setenv("XCW_QUIET", "true")
+		defer os.Unsetenv("XCW_QUIET")
+
+		applyEnvOverrides(cfg)
+		assert.True(t, cfg.Quiet)
+	})
+
+	t.Run("overrides quiet from env with 1", func(t *testing.T) {
+		cfg := Default()
+		os.Setenv("XCW_QUIET", "1")
+		defer os.Unsetenv("XCW_QUIET")
+
+		applyEnvOverrides(cfg)
+		assert.True(t, cfg.Quiet)
+	})
+
+	t.Run("does not override quiet with other values", func(t *testing.T) {
+		cfg := Default()
+		os.Setenv("XCW_QUIET", "yes")
+		defer os.Unsetenv("XCW_QUIET")
+
+		applyEnvOverrides(cfg)
+		assert.False(t, cfg.Quiet)
+	})
+
+	t.Run("overrides app from env", func(t *testing.T) {
+		cfg := Default()
+		os.Setenv("XCW_APP", "com.example.app")
+		defer os.Unsetenv("XCW_APP")
+
+		applyEnvOverrides(cfg)
+		assert.Equal(t, "com.example.app", cfg.Defaults.App)
+	})
+}
