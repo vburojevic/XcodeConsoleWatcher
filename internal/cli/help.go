@@ -115,7 +115,7 @@ func buildDocumentation() *HelpOutput {
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --process MyApp --process MyAppExtension`, Description: "Filter by process name"},
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp -x noise -x spam`, Description: "Exclude multiple patterns"},
 				},
-				OutputTypes:     []string{"log", "ready", "summary", "heartbeat", "tmux", "error"},
+				OutputTypes:     []string{"log", "session_start", "session_end", "ready", "summary", "heartbeat", "tmux", "error"},
 				RelatedCommands: []string{"query", "watch", "analyze", "discover"},
 			},
 			"query": {
@@ -226,7 +226,7 @@ func buildDocumentation() *HelpOutput {
 		},
 		OutputTypes: map[string]OutputTypeDoc{
 			"log": {
-				Description: "Individual log entry from iOS Simulator",
+				Description: "Individual log entry from iOS Simulator. Includes session number for tracking app relaunches.",
 				Example: map[string]interface{}{
 					"type":          "log",
 					"schemaVersion": 1,
@@ -237,8 +237,41 @@ func buildDocumentation() *HelpOutput {
 					"subsystem":     "com.example.myapp",
 					"category":      "network",
 					"message":       "Connection failed: timeout",
+					"session":       1,
 				},
 				When: "Each log entry during tail or query",
+			},
+			"session_start": {
+				Description: "Emitted when a new app session begins. When alert='APP_RELAUNCHED', the app was relaunched (PID changed). AI agents should watch for this to know logs are from a fresh app instance.",
+				Example: map[string]interface{}{
+					"type":          "session_start",
+					"schemaVersion": 1,
+					"alert":         "APP_RELAUNCHED",
+					"session":       2,
+					"pid":           67890,
+					"previous_pid":  12345,
+					"app":           "com.example.myapp",
+					"simulator":     "iPhone 17 Pro",
+					"udid":          "ABC123-DEF456-...",
+					"timestamp":     "2024-01-15T10:30:45.123Z",
+				},
+				When: "When xcw tail detects the app was relaunched (PID changed)",
+			},
+			"session_end": {
+				Description: "Emitted when an app session ends (before session_start when app relaunches). Contains summary of the ended session.",
+				Example: map[string]interface{}{
+					"type":          "session_end",
+					"schemaVersion": 1,
+					"session":       1,
+					"pid":           12345,
+					"summary": map[string]interface{}{
+						"total_logs":       142,
+						"errors":           3,
+						"faults":           0,
+						"duration_seconds": 45,
+					},
+				},
+				When: "When xcw tail detects the app was relaunched (before session_start)",
 			},
 			"tmux": {
 				Description: "Tmux session information when --tmux is used",

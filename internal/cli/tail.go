@@ -15,6 +15,7 @@ import (
 	"github.com/vburojevic/xcw/internal/domain"
 	"github.com/vburojevic/xcw/internal/filter"
 	"github.com/vburojevic/xcw/internal/output"
+	"github.com/vburojevic/xcw/internal/session"
 	"github.com/vburojevic/xcw/internal/simulator"
 	"github.com/vburojevic/xcw/internal/tmux"
 )
@@ -340,6 +341,10 @@ func (c *TailCmd) Run(globals *Globals) error {
 		globals.Debug("Where filter: %d clauses", len(c.Where))
 	}
 
+	// Create session tracker for detecting app relaunches
+	sessionTracker := session.NewTracker(c.App, device.Name, device.UDID)
+	globals.Debug("Session tracking enabled")
+
 	// Process logs
 	for {
 		select {
@@ -349,6 +354,50 @@ func (c *TailCmd) Run(globals *Globals) error {
 			return nil
 
 		case entry := <-streamer.Logs():
+			// Check for session change (app relaunch)
+			if sessionChange := sessionTracker.CheckEntry(&entry); sessionChange != nil {
+				// Session changed - emit events
+				if sessionChange.EndSession != nil {
+					// Output session end with summary
+					if globals.Format == "ndjson" {
+						output.NewNDJSONWriter(outputWriter).WriteSessionEnd(sessionChange.EndSession)
+					}
+				}
+
+				if sessionChange.StartSession != nil {
+					// Output stderr alert for AI agents
+					if sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
+						prevSummary := ""
+						if sessionChange.EndSession != nil {
+							prevSummary = fmt.Sprintf(" - Previous: %d logs, %d errors",
+								sessionChange.EndSession.Summary.TotalLogs,
+								sessionChange.EndSession.Summary.Errors)
+						}
+						fmt.Fprintf(globals.Stderr, "[XCW] 🚀 NEW SESSION: App relaunched (PID: %d)%s\n",
+							sessionChange.StartSession.PID, prevSummary)
+					}
+
+					// Output JSON session start event
+					if globals.Format == "ndjson" {
+						output.NewNDJSONWriter(outputWriter).WriteSessionStart(sessionChange.StartSession)
+					}
+
+					// Write tmux session banner if in tmux mode
+					if tmuxMgr != nil && sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
+						var prevSummary *domain.SessionSummary
+						if sessionChange.EndSession != nil {
+							prevSummary = &sessionChange.EndSession.Summary
+						}
+						tmuxMgr.WriteSessionBanner(
+							sessionChange.StartSession.Session,
+							c.App,
+							sessionChange.StartSession.PID,
+							prevSummary,
+						)
+					}
+				}
+			}
+
 			// Apply where filter if enabled
 			if whereFilter != nil && !whereFilter.Match(&entry) {
 				continue // Skip entries that don't match where clauses
@@ -367,6 +416,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 					entry.DedupeLast = result.LastSeen.Format(time.RFC3339)
 				}
 			}
+
+			// Set session number on entry
+			entry.Session = sessionTracker.CurrentSession()
 
 			if err := writer.Write(&entry); err != nil {
 				return err

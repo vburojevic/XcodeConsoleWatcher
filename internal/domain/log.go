@@ -63,6 +63,9 @@ type LogEntry struct {
 	SenderPath  string    `json:"senderPath,omitempty"`
 	EventType   string    `json:"eventType,omitempty"`
 
+	// Session tracking (populated when session tracking is active)
+	Session int `json:"session,omitempty"` // Session number (1, 2, 3...)
+
 	// Dedupe metadata (populated when --dedupe is used)
 	DedupeCount int    `json:"dedupe_count,omitempty"` // Number of collapsed duplicates
 	DedupeFirst string `json:"dedupe_first,omitempty"` // First occurrence timestamp

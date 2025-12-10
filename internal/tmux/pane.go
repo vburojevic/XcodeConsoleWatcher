@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/vburojevic/xcw/internal/domain"
 )
 
 // ClearPane clears the pane content and scrollback history
@@ -53,6 +55,29 @@ func (m *Manager) ClearPaneWithBanner(message string) error {
 			"═══════════════════════════════════════════════════════════",
 		message,
 		m.config.SessionName,
+		time.Now().Format("2006-01-02 15:04:05"),
+	)
+
+	return m.WriteLines(strings.Split(banner, "\n"))
+}
+
+// WriteSessionBanner writes a visual banner when app is relaunched
+func (m *Manager) WriteSessionBanner(session int, app string, pid int, prevSummary *domain.SessionSummary) error {
+	// Build previous session summary if available
+	prevInfo := ""
+	if prevSummary != nil {
+		prevInfo = fmt.Sprintf("Previous: %d logs, %d errors | ", prevSummary.TotalLogs, prevSummary.Errors)
+	}
+
+	banner := fmt.Sprintf(
+		"\n══════════════════════════════════════════════════════════════\n"+
+			"  🚀 SESSION %d: %s (PID: %d)\n"+
+			"  %s%s\n"+
+			"══════════════════════════════════════════════════════════════",
+		session,
+		app,
+		pid,
+		prevInfo,
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
 

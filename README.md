@@ -27,6 +27,7 @@ That's it. This streams logs from your app in real-time.
 
 * **Structured NDJSON output** – each log event, summary or error is emitted as a JSON object, perfect for incremental consumption.
 * **Real-time streaming** – tail logs from a booted simulator or a specific device with `xcw tail`.
+* **Automatic session tracking** – detects app relaunches and emits `session_start`/`session_end` events so AI agents know when the app restarted.
 * **Historical queries** – query past logs with `xcw query` using relative durations such as `--since 5m`.
 * **Smart filtering** – filter by app bundle ID, log level, regex patterns, field values (`--where`), or exclude noise.
 * **Log discovery** – use `xcw discover` to understand what subsystems, categories, and processes exist before filtering.
@@ -352,14 +353,50 @@ xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m -l error
 
 **Note:** `--tmux` is designed for human visual monitoring.  AI agents should prefer `--session-dir` or `--output` for programmatic access to recorded logs.
 
+## Automatic session tracking
+
+`xcw` automatically detects when your iOS app is relaunched from Xcode.  When the app's PID changes, `xcw` emits session events so AI agents know they're looking at a fresh app instance without needing to restart tailing.
+
+**How it works:**
+
+1. On first log, `xcw` emits a `session_start` event with `session: 1`
+2. All log entries include a `session` field matching the current session number
+3. When the app relaunches (PID changes), `xcw` emits:
+   - `session_end` with summary of the previous session (logs, errors, faults, duration)
+   - `session_start` with `alert: "APP_RELAUNCHED"` and the new session number
+
+**Example session events:**
+
+```json
+{"type":"session_end","schemaVersion":1,"session":1,"pid":12345,"summary":{"total_logs":142,"errors":3,"faults":0,"duration_seconds":45}}
+{"type":"session_start","schemaVersion":1,"alert":"APP_RELAUNCHED","session":2,"pid":67890,"previous_pid":12345,"app":"com.example.myapp","simulator":"iPhone 17 Pro","udid":"...","timestamp":"2024-01-15T10:30:45Z"}
+```
+
+**Stderr alert (for AI agents scanning stderr):**
+
+```
+[XCW] 🚀 NEW SESSION: App relaunched (PID: 67890) - Previous: 142 logs, 3 errors
+```
+
+**In tmux mode**, a visual separator banner is written when a new session starts:
+
+```
+══════════════════════════════════════════════════════════════
+  🚀 SESSION 2: com.example.myapp (PID: 67890)
+  Previous: 142 logs, 3 errors | 2024-01-15 10:30:45
+══════════════════════════════════════════════════════════════
+```
+
+This allows AI agents to keep `xcw tail` running continuously while you rebuild and relaunch your app from Xcode—no need to restart tailing.
+
 ## Output format & JSON schema
 
-By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Types include `log`, `console`, `ready`, `summary`, `analysis`, `heartbeat`, `error`, `info`, `warning`, `tmux`, `trigger`, `app`, `doctor`, `pick` and `session`.  The current schema version is `1`.
+By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Types include `log`, `console`, `ready`, `summary`, `analysis`, `heartbeat`, `error`, `info`, `warning`, `tmux`, `trigger`, `app`, `doctor`, `pick`, `session`, `session_start` and `session_end`.  The current schema version is `1`.
 
 Example log entry:
 
 ```json
-{"type":"log","schemaVersion":1,"timestamp":"2024-01-15T10:30:45.123Z","level":"Error","process":"MyApp","pid":1234,"subsystem":"com.example.myapp","category":"network","message":"Connection failed"}
+{"type":"log","schemaVersion":1,"timestamp":"2024-01-15T10:30:45.123Z","level":"Error","process":"MyApp","pid":1234,"subsystem":"com.example.myapp","category":"network","message":"Connection failed","session":1}
 ```
 
 Example summary marker:
@@ -402,11 +439,12 @@ Key properties:
 1. **Primary command is `tail`** – stream logs in real-time; use `--session-dir` to record for analysis.
 2. **Structured NDJSON output** – easy to parse incrementally, one JSON object per line.
 3. **Schema versioning** – every record contains a `schemaVersion` so agents can handle future changes.
-4. **Session recording** – capture logs to timestamped files, analyze later with `xcw analyze`.
-5. **Pattern detection** – analysis mode groups similar errors and tracks new vs known patterns.
-6. **Non-interactive** – all commands accept flags; no interactive prompts required.
-7. **Self-documenting** – run `xcw help --json` for complete machine-readable documentation.
-8. **Self-diagnostics** – `xcw doctor` checks your environment and prints a diagnostics report.
+4. **Automatic session tracking** – detects app relaunches via PID changes and emits `session_start`/`session_end` events with summaries. No need to restart tailing when rebuilding from Xcode.
+5. **Session recording** – capture logs to timestamped files, analyze later with `xcw analyze`.
+6. **Pattern detection** – analysis mode groups similar errors and tracks new vs known patterns.
+7. **Non-interactive** – all commands accept flags; no interactive prompts required.
+8. **Self-documenting** – run `xcw help --json` for complete machine-readable documentation.
+9. **Self-diagnostics** – `xcw doctor` checks your environment and prints a diagnostics report.
 
 ## Requirements
 

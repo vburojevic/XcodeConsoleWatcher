@@ -33,6 +33,7 @@ type OutputEntry struct {
 	Subsystem     string `json:"subsystem,omitempty"`
 	Category      string `json:"category,omitempty"`
 	Message       string `json:"message"`
+	Session       int    `json:"session,omitempty"` // Session number (1, 2, 3...)
 }
 
 // Heartbeat is a keepalive message for AI agents
@@ -109,8 +110,19 @@ func (w *NDJSONWriter) Write(entry *domain.LogEntry) error {
 		Subsystem:     entry.Subsystem,
 		Category:      entry.Category,
 		Message:       entry.Message,
+		Session:       entry.Session,
 	}
 	return w.encoder.Encode(out)
+}
+
+// WriteSessionStart outputs a session start event
+func (w *NDJSONWriter) WriteSessionStart(session *domain.SessionStart) error {
+	return w.encoder.Encode(session)
+}
+
+// WriteSessionEnd outputs a session end event
+func (w *NDJSONWriter) WriteSessionEnd(session *domain.SessionEnd) error {
+	return w.encoder.Encode(session)
 }
 
 // WriteSummary outputs a summary marker
