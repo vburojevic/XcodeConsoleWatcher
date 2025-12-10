@@ -62,6 +62,11 @@ type LogEntry struct {
 	ProcessPath string    `json:"processPath,omitempty"`
 	SenderPath  string    `json:"senderPath,omitempty"`
 	EventType   string    `json:"eventType,omitempty"`
+
+	// Dedupe metadata (populated when --dedupe is used)
+	DedupeCount int    `json:"dedupe_count,omitempty"` // Number of collapsed duplicates
+	DedupeFirst string `json:"dedupe_first,omitempty"` // First occurrence timestamp
+	DedupeLast  string `json:"dedupe_last,omitempty"`  // Last occurrence timestamp
 }
 
 // RawLogEntry matches the native NDJSON structure from `log stream --style ndjson`

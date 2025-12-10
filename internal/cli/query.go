@@ -1,13 +1,14 @@
 package cli
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"time"
 
 	"github.com/vburojevic/xcw/internal/domain"
+	"github.com/vburojevic/xcw/internal/filter"
 	"github.com/vburojevic/xcw/internal/output"
 	"github.com/vburojevic/xcw/internal/simulator"
 )
@@ -19,18 +20,20 @@ type QueryCmd struct {
 	App             string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
 	Since           string   `default:"5m" help:"How far back to query (e.g., '5m', '1h', '30s')"`
 	Until           string   `help:"End time for query (RFC3339 or relative like '1m')"`
-	Pattern         string   `short:"p" help:"Regex pattern to filter log messages"`
-	Exclude         string   `short:"x" help:"Regex pattern to exclude from log messages"`
+	Pattern         string   `short:"p" aliases:"filter" help:"Regex pattern to filter log messages"`
+	Exclude         []string `short:"x" help:"Regex pattern to exclude from log messages (can be repeated)"`
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	Limit           int      `default:"1000" help:"Maximum number of logs to return"`
 	Subsystem       []string `help:"Filter by subsystem (can be repeated)"`
 	Category        []string `help:"Filter by category (can be repeated)"`
+	Process         []string `help:"Filter by process name (can be repeated)"`
 	MinLevel        string   `help:"Minimum log level: debug, info, default, error, fault (overrides global --level)"`
 	MaxLevel        string   `help:"Maximum log level: debug, info, default, error, fault"`
 	Predicate       string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
 	Analyze         bool     `help:"Include AI-friendly analysis summary"`
 	PersistPatterns bool     `help:"Save detected patterns for future reference (marks new vs known)"`
 	PatternFile     string   `help:"Custom pattern file path (default: ~/.xcw/patterns.json)"`
+	Where           []string `short:"w" help:"Field filter (e.g., 'level=error', 'message~timeout'). Operators: =, !=, ~, !~, >=, <=, ^, $"`
 }
 
 // Run executes the query command
@@ -83,13 +86,14 @@ func (c *QueryCmd) Run(globals *Globals) error {
 		}
 	}
 
-	// Compile exclude pattern regex if provided
-	var excludePattern *regexp.Regexp
-	if c.Exclude != "" {
-		excludePattern, err = regexp.Compile(c.Exclude)
+	// Compile exclude pattern regexes if provided
+	var excludePatterns []*regexp.Regexp
+	for _, excl := range c.Exclude {
+		re, err := regexp.Compile(excl)
 		if err != nil {
-			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern: %s", err))
+			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern '%s': %s", excl, err))
 		}
+		excludePatterns = append(excludePatterns, re)
 	}
 
 	// Output query info if not quiet
@@ -117,10 +121,11 @@ func (c *QueryCmd) Run(globals *Globals) error {
 		BundleID:          c.App,
 		Subsystems:        c.Subsystem,
 		Categories:        c.Category,
+		Processes:         c.Process,
 		MinLevel:          domain.ParseLogLevel(minLevel),
 		MaxLevel:          domain.ParseLogLevel(c.MaxLevel),
 		Pattern:           pattern,
-		ExcludePattern:    excludePattern,
+		ExcludePatterns:   excludePatterns,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		Since:             since,
 		Until:             until,
@@ -136,6 +141,24 @@ func (c *QueryCmd) Run(globals *Globals) error {
 		return c.outputError(globals, "QUERY_FAILED", err.Error())
 	}
 	globals.Debug("Query returned %d entries", len(entries))
+
+	// Apply where filter if provided
+	if len(c.Where) > 0 {
+		whereFilter, err := filter.NewWhereFilter(c.Where)
+		if err != nil {
+			return c.outputError(globals, "INVALID_WHERE", err.Error())
+		}
+		globals.Debug("Where filter: %d clauses", len(c.Where))
+
+		var filtered []domain.LogEntry
+		for _, entry := range entries {
+			if whereFilter.Match(&entry) {
+				filtered = append(filtered, entry)
+			}
+		}
+		globals.Debug("After where filter: %d entries (was %d)", len(filtered), len(entries))
+		entries = filtered
+	}
 
 	// Create output writer
 	if globals.Format == "ndjson" {

@@ -19,7 +19,7 @@ type UICmd struct {
 	Simulator        string   `short:"s" help:"Simulator name or UDID"`
 	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
+	Pattern          string   `short:"p" aliases:"filter" help:"Regex pattern to filter log messages"`
 	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
@@ -73,12 +73,13 @@ func (c *UICmd) Run(globals *Globals) error {
 	}
 
 	// Compile exclude pattern regex if provided
-	var excludePattern *regexp.Regexp
+	var excludePatterns []*regexp.Regexp
 	if c.Exclude != "" {
-		excludePattern, err = regexp.Compile(c.Exclude)
+		excludePattern, err := regexp.Compile(c.Exclude)
 		if err != nil {
 			return fmt.Errorf("invalid exclude regex pattern: %w", err)
 		}
+		excludePatterns = append(excludePatterns, excludePattern)
 	}
 
 	// Create streamer
@@ -89,7 +90,7 @@ func (c *UICmd) Run(globals *Globals) error {
 		Categories:        c.Category,
 		MinLevel:          domain.ParseLogLevel(globals.Level),
 		Pattern:           pattern,
-		ExcludePattern:    excludePattern,
+		ExcludePatterns:   excludePatterns,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        c.BufferSize,
 		RawPredicate:      c.Predicate,

@@ -25,7 +25,7 @@ type WatchCmd struct {
 	Simulator           string   `short:"s" help:"Simulator name or UDID"`
 	Booted              bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App                 string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Pattern             string   `short:"p" help:"Regex pattern to filter log messages"`
+	Pattern             string   `short:"p" aliases:"filter" help:"Regex pattern to filter log messages"`
 	Exclude             string   `short:"x" help:"Regex pattern to exclude from log messages"`
 	ExcludeSubsystem    []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	MinLevel            string   `help:"Minimum log level: debug, info, default, error, fault (overrides global --level)"`
@@ -226,12 +226,13 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	}
 
 	// Compile exclude pattern
-	var excludePattern *regexp.Regexp
+	var excludePatterns []*regexp.Regexp
 	if c.Exclude != "" {
-		excludePattern, err = regexp.Compile(c.Exclude)
+		excludePattern, err := regexp.Compile(c.Exclude)
 		if err != nil {
 			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude pattern: %s", err))
 		}
+		excludePatterns = append(excludePatterns, excludePattern)
 	}
 
 	// Determine log level (command-specific overrides global)
@@ -247,7 +248,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 		MinLevel:          domain.ParseLogLevel(minLevel),
 		MaxLevel:          domain.ParseLogLevel(c.MaxLevel),
 		Pattern:           pattern,
-		ExcludePattern:    excludePattern,
+		ExcludePatterns:   excludePatterns,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        100,
 		RawPredicate:      c.Predicate,

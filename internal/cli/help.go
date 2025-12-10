@@ -92,6 +92,8 @@ func buildDocumentation() *HelpOutput {
 			"list_simulators":      `xcw list`,
 			"list_apps":            `xcw apps -s "iPhone 17 Pro"`,
 			"stream_logs":          `xcw tail -s "iPhone 17 Pro" -a com.example.myapp`,
+			"filter_by_field":      `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --where level=error`,
+			"discover_log_sources": `xcw discover -s "iPhone 17 Pro" -a com.example.myapp --since 5m`,
 			"record_to_file":       `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --session-dir ~/.xcw/sessions`,
 			"analyze_session":      `xcw analyze $(xcw sessions show --latest)`,
 			"check_setup":          `xcw doctor`,
@@ -105,10 +107,16 @@ func buildDocumentation() *HelpOutput {
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --tmux`, Description: "Background with tmux (returns session name)"},
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --output file.ndjson`, Description: "Stream to file"},
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp -l error`, Description: "Only error/fault level"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --filter "error|warn"`, Description: "Filter by regex (alias for --pattern)"},
 					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --wait-for-launch`, Description: "Start capture before app launches (emits ready event)"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --where level=error`, Description: "Filter by field (supports =, !=, ~, !~, >=, <=, ^, $)"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --where "message~timeout"`, Description: "Filter messages containing 'timeout'"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --dedupe`, Description: "Collapse repeated identical messages"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --process MyApp --process MyAppExtension`, Description: "Filter by process name"},
+					{Command: `xcw tail -s "iPhone 17 Pro" -a com.example.myapp -x noise -x spam`, Description: "Exclude multiple patterns"},
 				},
 				OutputTypes:     []string{"log", "ready", "summary", "heartbeat", "tmux", "error"},
-				RelatedCommands: []string{"query", "watch", "analyze"},
+				RelatedCommands: []string{"query", "watch", "analyze", "discover"},
 			},
 			"query": {
 				Description: "Query historical logs from iOS Simulator",
@@ -186,6 +194,17 @@ func buildDocumentation() *HelpOutput {
 					{Command: `xcw sessions clean --keep 10`, Description: "Keep 10 most recent"},
 				},
 				OutputTypes: []string{"session", "info", "error"},
+			},
+			"discover": {
+				Description: "Discover what subsystems, categories, and processes exist in logs. Essential first step for understanding an app's logging landscape.",
+				Usage:       "xcw discover -s SIMULATOR [-a APP] --since DURATION",
+				Examples: []ExampleDoc{
+					{Command: `xcw discover -s "iPhone 17 Pro" --since 5m`, Description: "Discover all logs from last 5 minutes"},
+					{Command: `xcw discover -s "iPhone 17 Pro" -a com.example.myapp --since 10m`, Description: "Discover logs for specific app"},
+					{Command: `xcw discover -b --since 1h --top-n 30`, Description: "More items, booted sim, 1 hour"},
+				},
+				OutputTypes:     []string{"discovery", "error"},
+				RelatedCommands: []string{"tail", "query"},
 			},
 			"schema": {
 				Description: "Output JSON Schema for xcw output types",
@@ -296,6 +315,27 @@ func buildDocumentation() *HelpOutput {
 					"app":           "com.example.myapp",
 				},
 				When: "Immediately after log stream starts when --wait-for-launch is used",
+			},
+			"discovery": {
+				Description: "Log discovery results showing subsystems, categories, processes, and levels",
+				Example: map[string]interface{}{
+					"type":          "discovery",
+					"schemaVersion": 1,
+					"app":           "com.example.myapp",
+					"time_range":    map[string]string{"start": "2024-01-15T10:25:45Z", "end": "2024-01-15T10:30:45Z"},
+					"total_count":   1250,
+					"subsystems": []map[string]interface{}{
+						{"name": "com.example.myapp", "count": 450, "levels": map[string]int{"debug": 300, "info": 100, "error": 50}},
+					},
+					"categories": []map[string]interface{}{
+						{"name": "network", "count": 300},
+					},
+					"processes": []map[string]interface{}{
+						{"name": "MyApp", "count": 800},
+					},
+					"levels": map[string]int{"debug": 700, "info": 350, "error": 80},
+				},
+				When: "From xcw discover command",
 			},
 			"error": {
 				Description: "Error from xcw (not the app being monitored)",

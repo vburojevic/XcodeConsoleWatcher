@@ -292,3 +292,272 @@ func TestNewFilters(t *testing.T) {
 		require.NotNil(t, f)
 	})
 }
+
+func TestWhereClause(t *testing.T) {
+	t.Run("parse equals operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("level=error")
+		require.NoError(t, err)
+		assert.Equal(t, "level", wc.Field)
+		assert.Equal(t, "=", wc.Operator)
+		assert.Equal(t, "error", wc.Value)
+	})
+
+	t.Run("parse not equals operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("level!=debug")
+		require.NoError(t, err)
+		assert.Equal(t, "level", wc.Field)
+		assert.Equal(t, "!=", wc.Operator)
+		assert.Equal(t, "debug", wc.Value)
+	})
+
+	t.Run("parse contains operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("message~timeout")
+		require.NoError(t, err)
+		assert.Equal(t, "message", wc.Field)
+		assert.Equal(t, "~", wc.Operator)
+		assert.Equal(t, "timeout", wc.Value)
+	})
+
+	t.Run("parse not contains operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("message!~heartbeat")
+		require.NoError(t, err)
+		assert.Equal(t, "message", wc.Field)
+		assert.Equal(t, "!~", wc.Operator)
+		assert.Equal(t, "heartbeat", wc.Value)
+	})
+
+	t.Run("parse greater or equal operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("level>=error")
+		require.NoError(t, err)
+		assert.Equal(t, "level", wc.Field)
+		assert.Equal(t, ">=", wc.Operator)
+		assert.Equal(t, "error", wc.Value)
+	})
+
+	t.Run("parse starts with operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("subsystem^com.example")
+		require.NoError(t, err)
+		assert.Equal(t, "subsystem", wc.Field)
+		assert.Equal(t, "^", wc.Operator)
+		assert.Equal(t, "com.example", wc.Value)
+	})
+
+	t.Run("parse ends with operator", func(t *testing.T) {
+		wc, err := ParseWhereClause("message$failed")
+		require.NoError(t, err)
+		assert.Equal(t, "message", wc.Field)
+		assert.Equal(t, "$", wc.Operator)
+		assert.Equal(t, "failed", wc.Value)
+	})
+
+	t.Run("invalid clause no operator", func(t *testing.T) {
+		_, err := ParseWhereClause("levelxerror")
+		assert.Error(t, err)
+	})
+
+	t.Run("invalid regex", func(t *testing.T) {
+		_, err := ParseWhereClause("message~[invalid")
+		assert.Error(t, err)
+	})
+}
+
+func TestWhereClauseMatch(t *testing.T) {
+	t.Run("equals level", func(t *testing.T) {
+		wc, _ := ParseWhereClause("level=Error")
+		entry := &domain.LogEntry{Level: domain.LogLevelError}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Level: domain.LogLevelDebug}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("not equals", func(t *testing.T) {
+		wc, _ := ParseWhereClause("level!=Debug")
+		entry := &domain.LogEntry{Level: domain.LogLevelError}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Level: domain.LogLevelDebug}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("contains regex", func(t *testing.T) {
+		wc, _ := ParseWhereClause("message~timeout")
+		entry := &domain.LogEntry{Message: "Connection timeout occurred"}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Message: "Success"}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("not contains regex", func(t *testing.T) {
+		wc, _ := ParseWhereClause("message!~heartbeat")
+		entry := &domain.LogEntry{Message: "Error occurred"}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Message: "heartbeat ping"}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("starts with", func(t *testing.T) {
+		wc, _ := ParseWhereClause("subsystem^com.example")
+		entry := &domain.LogEntry{Subsystem: "com.example.app"}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Subsystem: "com.other.app"}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("ends with", func(t *testing.T) {
+		wc, _ := ParseWhereClause("message$failed")
+		entry := &domain.LogEntry{Message: "Connection failed"}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Message: "Success"}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("greater or equal level", func(t *testing.T) {
+		wc, _ := ParseWhereClause("level>=error")
+
+		assert.True(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelError}))
+		assert.True(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelFault}))
+		assert.False(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelInfo}))
+		assert.False(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelDebug}))
+	})
+
+	t.Run("less or equal level", func(t *testing.T) {
+		wc, _ := ParseWhereClause("level<=info")
+
+		assert.True(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelDebug}))
+		assert.True(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelInfo}))
+		assert.False(t, wc.Match(&domain.LogEntry{Level: domain.LogLevelError}))
+	})
+
+	t.Run("match by process", func(t *testing.T) {
+		wc, _ := ParseWhereClause("process=MyApp")
+		entry := &domain.LogEntry{Process: "MyApp"}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{Process: "OtherApp"}
+		assert.False(t, wc.Match(entry2))
+	})
+
+	t.Run("match by category", func(t *testing.T) {
+		wc, _ := ParseWhereClause("category=network")
+		entry := &domain.LogEntry{Category: "network"}
+		assert.True(t, wc.Match(entry))
+	})
+
+	t.Run("match by pid", func(t *testing.T) {
+		wc, _ := ParseWhereClause("pid=1234")
+		entry := &domain.LogEntry{PID: 1234}
+		assert.True(t, wc.Match(entry))
+
+		entry2 := &domain.LogEntry{PID: 5678}
+		assert.False(t, wc.Match(entry2))
+	})
+}
+
+func TestWhereFilter(t *testing.T) {
+	t.Run("nil for empty clauses", func(t *testing.T) {
+		f, err := NewWhereFilter(nil)
+		require.NoError(t, err)
+		assert.Nil(t, f)
+	})
+
+	t.Run("AND logic for multiple clauses", func(t *testing.T) {
+		f, err := NewWhereFilter([]string{"level=Error", "message~timeout"})
+		require.NoError(t, err)
+
+		// Both conditions match
+		entry1 := &domain.LogEntry{Level: domain.LogLevelError, Message: "Connection timeout"}
+		assert.True(t, f.Match(entry1))
+
+		// Level matches but message doesn't
+		entry2 := &domain.LogEntry{Level: domain.LogLevelError, Message: "Success"}
+		assert.False(t, f.Match(entry2))
+
+		// Message matches but level doesn't
+		entry3 := &domain.LogEntry{Level: domain.LogLevelDebug, Message: "Connection timeout"}
+		assert.False(t, f.Match(entry3))
+	})
+
+	t.Run("invalid clause returns error", func(t *testing.T) {
+		_, err := NewWhereFilter([]string{"invalid"})
+		assert.Error(t, err)
+	})
+}
+
+func TestDedupeFilter(t *testing.T) {
+	t.Run("first occurrence always emits", func(t *testing.T) {
+		f := NewDedupeFilter(0)
+		entry := &domain.LogEntry{Message: "test message"}
+		result := f.Check(entry)
+		assert.True(t, result.ShouldEmit)
+		assert.Equal(t, 1, result.Count)
+	})
+
+	t.Run("consecutive duplicates suppressed", func(t *testing.T) {
+		f := NewDedupeFilter(0)
+		entry := &domain.LogEntry{Message: "test message"}
+
+		result1 := f.Check(entry)
+		assert.True(t, result1.ShouldEmit)
+
+		result2 := f.Check(entry)
+		assert.False(t, result2.ShouldEmit)
+		assert.Equal(t, 2, result2.Count)
+
+		result3 := f.Check(entry)
+		assert.False(t, result3.ShouldEmit)
+		assert.Equal(t, 3, result3.Count)
+	})
+
+	t.Run("different message resets", func(t *testing.T) {
+		f := NewDedupeFilter(0)
+		entry1 := &domain.LogEntry{Message: "first message"}
+		entry2 := &domain.LogEntry{Message: "second message"}
+
+		result1 := f.Check(entry1)
+		assert.True(t, result1.ShouldEmit)
+
+		result2 := f.Check(entry1)
+		assert.False(t, result2.ShouldEmit)
+
+		// Different message should emit
+		result3 := f.Check(entry2)
+		assert.True(t, result3.ShouldEmit)
+		assert.Equal(t, 1, result3.Count)
+
+		// Going back to first message should emit again in consecutive mode
+		result4 := f.Check(entry1)
+		assert.True(t, result4.ShouldEmit)
+	})
+
+	t.Run("reset clears state", func(t *testing.T) {
+		f := NewDedupeFilter(0)
+		entry := &domain.LogEntry{Message: "test message"}
+
+		f.Check(entry)
+		f.Check(entry)
+
+		f.Reset()
+
+		result := f.Check(entry)
+		assert.True(t, result.ShouldEmit)
+		assert.Equal(t, 1, result.Count)
+	})
+
+	t.Run("get pending duplicates", func(t *testing.T) {
+		f := NewDedupeFilter(0)
+		entry := &domain.LogEntry{Message: "test message"}
+
+		f.Check(entry)
+		f.Check(entry)
+		f.Check(entry)
+
+		pending := f.GetPendingDuplicates()
+		assert.Len(t, pending, 1)
+		assert.Equal(t, 3, pending["test message"].count)
+	})
+}

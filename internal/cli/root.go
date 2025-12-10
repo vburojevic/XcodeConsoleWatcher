@@ -24,6 +24,7 @@ type CLI struct {
 	List       ListCmd       `cmd:"" help:"List available simulators"`
 	Tail       TailCmd       `cmd:"" default:"withargs" help:"Stream logs from a running simulator"`
 	Query      QueryCmd      `cmd:"" help:"Query historical logs from simulator"`
+	Discover   DiscoverCmd   `cmd:"" help:"Discover subsystems, categories, and processes in logs"`
 	Summary    SummaryCmd    `cmd:"" help:"Output summary of recent logs"`
 	Watch      WatchCmd      `cmd:"" help:"Watch logs and trigger commands on patterns"`
 	Clear      ClearCmd      `cmd:"" help:"Clear tmux session content"`

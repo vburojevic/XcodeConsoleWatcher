@@ -17,7 +17,7 @@ type SummaryCmd struct {
 	Simulator string `short:"s" default:"booted" help:"Simulator name, UDID, or 'booted' for auto-detect"`
 	App       string `short:"a" required:"" help:"App bundle identifier to filter logs"`
 	Window    string `default:"5m" help:"Time window for summary (e.g., '5m', '1h')"`
-	Pattern   string `short:"p" help:"Regex pattern to filter log messages"`
+	Pattern   string `short:"p" aliases:"filter" help:"Regex pattern to filter log messages"`
 }
 
 // Run executes the summary command

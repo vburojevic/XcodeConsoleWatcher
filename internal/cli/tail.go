@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/vburojevic/xcw/internal/domain"
+	"github.com/vburojevic/xcw/internal/filter"
 	"github.com/vburojevic/xcw/internal/output"
 	"github.com/vburojevic/xcw/internal/simulator"
 	"github.com/vburojevic/xcw/internal/tmux"
@@ -23,11 +24,12 @@ type TailCmd struct {
 	Simulator        string   `short:"s" help:"Simulator name or UDID"`
 	Booted           bool     `short:"b" help:"Use booted simulator (error if multiple)"`
 	App              string   `short:"a" required:"" help:"App bundle identifier to filter logs"`
-	Pattern          string   `short:"p" help:"Regex pattern to filter log messages"`
-	Exclude          string   `short:"x" help:"Regex pattern to exclude from log messages"`
+	Pattern          string   `short:"p" aliases:"filter" help:"Regex pattern to filter log messages"`
+	Exclude          []string `short:"x" help:"Regex pattern to exclude from log messages (can be repeated)"`
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	Subsystem        []string `help:"Filter by subsystem (can be repeated)"`
 	Category         []string `help:"Filter by category (can be repeated)"`
+	Process          []string `help:"Filter by process name (can be repeated)"`
 	MinLevel         string   `help:"Minimum log level: debug, info, default, error, fault (overrides global --level)"`
 	MaxLevel         string   `help:"Maximum log level: debug, info, default, error, fault"`
 	Predicate        string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
@@ -40,6 +42,9 @@ type TailCmd struct {
 	Tmux             bool     `help:"Output to tmux session"`
 	Session          string   `help:"Custom tmux session name (default: xcw-<simulator>)"`
 	WaitForLaunch    bool     `help:"Start streaming immediately, emit 'ready' event when capture is active"`
+	Dedupe           bool     `help:"Collapse repeated identical messages"`
+	DedupeWindow     string   `help:"Time window for deduplication (e.g., '5s', '1m'). Without this, only consecutive duplicates are collapsed"`
+	Where            []string `short:"w" help:"Field filter (e.g., 'level=error', 'message~timeout'). Operators: =, !=, ~, !~, >=, <=, ^, $"`
 }
 
 // Run executes the tail command
@@ -207,14 +212,14 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 	}
 
-	// Compile exclude pattern regex if provided
-	var excludePattern *regexp.Regexp
-	if c.Exclude != "" {
-		var err error
-		excludePattern, err = regexp.Compile(c.Exclude)
+	// Compile exclude pattern regexes if provided
+	var excludePatterns []*regexp.Regexp
+	for _, excl := range c.Exclude {
+		re, err := regexp.Compile(excl)
 		if err != nil {
-			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern: %s", err))
+			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern '%s': %s", excl, err))
 		}
+		excludePatterns = append(excludePatterns, re)
 	}
 
 	// Determine log level (command-specific overrides global)
@@ -229,10 +234,11 @@ func (c *TailCmd) Run(globals *Globals) error {
 		BundleID:          c.App,
 		Subsystems:        c.Subsystem,
 		Categories:        c.Category,
+		Processes:         c.Process,
 		MinLevel:          domain.ParseLogLevel(minLevel),
 		MaxLevel:          domain.ParseLogLevel(c.MaxLevel),
 		Pattern:           pattern,
-		ExcludePattern:    excludePattern,
+		ExcludePatterns:   excludePatterns,
 		ExcludeSubsystems: c.ExcludeSubsystem,
 		BufferSize:        c.BufferSize,
 		RawPredicate:      c.Predicate,
@@ -242,8 +248,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 	if opts.Pattern != nil {
 		globals.Debug("Pattern filter: %s", opts.Pattern.String())
 	}
-	if opts.ExcludePattern != nil {
-		globals.Debug("Exclude pattern: %s", opts.ExcludePattern.String())
+	if len(opts.ExcludePatterns) > 0 {
+		globals.Debug("Exclude patterns: %d patterns", len(opts.ExcludePatterns))
 	}
 	if len(opts.ExcludeSubsystems) > 0 {
 		globals.Debug("Exclude subsystems: %v", opts.ExcludeSubsystems)
@@ -309,6 +315,31 @@ func (c *TailCmd) Run(globals *Globals) error {
 	startTime := time.Now()
 	logsSinceLast := 0
 
+	// Setup dedupe filter if enabled
+	var dedupeFilter *filter.DedupeFilter
+	if c.Dedupe {
+		var dedupeWindow time.Duration
+		if c.DedupeWindow != "" {
+			var err error
+			dedupeWindow, err = time.ParseDuration(c.DedupeWindow)
+			if err != nil {
+				return c.outputError(globals, "INVALID_DEDUPE_WINDOW", fmt.Sprintf("invalid dedupe window: %s", err))
+			}
+		}
+		dedupeFilter = filter.NewDedupeFilter(dedupeWindow)
+	}
+
+	// Setup where filter if provided
+	var whereFilter *filter.WhereFilter
+	if len(c.Where) > 0 {
+		var err error
+		whereFilter, err = filter.NewWhereFilter(c.Where)
+		if err != nil {
+			return c.outputError(globals, "INVALID_WHERE", err.Error())
+		}
+		globals.Debug("Where filter: %d clauses", len(c.Where))
+	}
+
 	// Process logs
 	for {
 		select {
@@ -318,6 +349,25 @@ func (c *TailCmd) Run(globals *Globals) error {
 			return nil
 
 		case entry := <-streamer.Logs():
+			// Apply where filter if enabled
+			if whereFilter != nil && !whereFilter.Match(&entry) {
+				continue // Skip entries that don't match where clauses
+			}
+
+			// Apply dedupe filter if enabled
+			if dedupeFilter != nil {
+				result := dedupeFilter.Check(&entry)
+				if !result.ShouldEmit {
+					continue // Skip duplicate
+				}
+				// Add dedupe metadata to first occurrence
+				if result.Count > 1 {
+					entry.DedupeCount = result.Count
+					entry.DedupeFirst = result.FirstSeen.Format(time.RFC3339)
+					entry.DedupeLast = result.LastSeen.Format(time.RFC3339)
+				}
+			}
+
 			if err := writer.Write(&entry); err != nil {
 				return err
 			}

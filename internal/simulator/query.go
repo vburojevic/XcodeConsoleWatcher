@@ -17,10 +17,11 @@ type QueryOptions struct {
 	BundleID          string          // Filter by app bundle identifier
 	Subsystems        []string        // Filter by subsystems
 	Categories        []string        // Filter by categories
+	Processes         []string        // Filter by process names
 	MinLevel          domain.LogLevel // Minimum log level (inclusive)
 	MaxLevel          domain.LogLevel // Maximum log level (inclusive, empty = no max)
-	Pattern           *regexp.Regexp  // Regex pattern for message filtering
-	ExcludePattern    *regexp.Regexp  // Regex pattern to exclude from messages
+	Pattern           *regexp.Regexp   // Regex pattern for message filtering
+	ExcludePatterns   []*regexp.Regexp // Regex patterns to exclude from messages
 	ExcludeSubsystems []string        // Subsystems to exclude
 	Since             time.Duration   // How far back to query
 	Until             time.Time       // End time (default: now)
@@ -83,13 +84,18 @@ func (r *QueryReader) Query(ctx context.Context, udid string, opts QueryOptions)
 			continue
 		}
 
-		// Apply exclusion pattern filter
-		if opts.ExcludePattern != nil && opts.ExcludePattern.MatchString(entry.Message) {
+		// Apply exclusion pattern filters (any match excludes)
+		if matchExcludePatterns(entry.Message, opts.ExcludePatterns) {
 			continue
 		}
 
 		// Apply subsystem exclusion filter
 		if len(opts.ExcludeSubsystems) > 0 && shouldExcludeSubsystem(entry.Subsystem, opts.ExcludeSubsystems) {
+			continue
+		}
+
+		// Apply process filter
+		if len(opts.Processes) > 0 && !matchProcess(entry.Process, opts.Processes) {
 			continue
 		}
 
@@ -204,6 +210,26 @@ func shouldExcludeSubsystem(subsystem string, excludeList []string) bool {
 				return true
 			}
 		} else if subsystem == excl {
+			return true
+		}
+	}
+	return false
+}
+
+// matchProcess checks if a process matches the filter list
+func matchProcess(process string, processes []string) bool {
+	for _, p := range processes {
+		if process == p {
+			return true
+		}
+	}
+	return false
+}
+
+// matchExcludePatterns checks if message matches any exclude pattern
+func matchExcludePatterns(message string, patterns []*regexp.Regexp) bool {
+	for _, p := range patterns {
+		if p != nil && p.MatchString(message) {
 			return true
 		}
 	}

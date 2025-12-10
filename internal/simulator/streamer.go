@@ -18,10 +18,11 @@ type StreamOptions struct {
 	BundleID          string          // Filter by app bundle identifier
 	Subsystems        []string        // Filter by subsystems
 	Categories        []string        // Filter by categories
+	Processes         []string        // Filter by process names
 	MinLevel          domain.LogLevel // Minimum log level (inclusive)
 	MaxLevel          domain.LogLevel // Maximum log level (inclusive, empty = no max)
-	Pattern           *regexp.Regexp  // Regex pattern for message filtering
-	ExcludePattern    *regexp.Regexp  // Regex pattern to exclude from messages
+	Pattern           *regexp.Regexp   // Regex pattern for message filtering
+	ExcludePatterns   []*regexp.Regexp // Regex patterns to exclude from messages
 	ExcludeSubsystems []string        // Subsystems to exclude
 	BufferSize        int             // Ring buffer size
 	RawPredicate      string          // Raw NSPredicate string (overrides other filters)
@@ -225,13 +226,18 @@ func (s *Streamer) runLogStream(ctx context.Context) error {
 			continue
 		}
 
-		// Apply exclusion pattern filter
-		if s.opts.ExcludePattern != nil && s.opts.ExcludePattern.MatchString(entry.Message) {
+		// Apply exclusion pattern filters (any match excludes)
+		if s.matchExcludePatterns(entry.Message) {
 			continue
 		}
 
 		// Apply subsystem exclusion filter
 		if len(s.opts.ExcludeSubsystems) > 0 && s.shouldExcludeSubsystem(entry.Subsystem) {
+			continue
+		}
+
+		// Apply process filter
+		if len(s.opts.Processes) > 0 && !s.matchProcess(entry.Process) {
 			continue
 		}
 
@@ -320,6 +326,26 @@ func (s *Streamer) shouldExcludeSubsystem(subsystem string) bool {
 				return true
 			}
 		} else if subsystem == excl {
+			return true
+		}
+	}
+	return false
+}
+
+// matchProcess checks if a process matches the filter list
+func (s *Streamer) matchProcess(process string) bool {
+	for _, p := range s.opts.Processes {
+		if process == p {
+			return true
+		}
+	}
+	return false
+}
+
+// matchExcludePatterns checks if message matches any exclude pattern
+func (s *Streamer) matchExcludePatterns(message string) bool {
+	for _, p := range s.opts.ExcludePatterns {
+		if p != nil && p.MatchString(message) {
 			return true
 		}
 	}

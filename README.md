@@ -28,7 +28,9 @@ That's it. This streams logs from your app in real-time.
 * **Structured NDJSON output** – each log event, summary or error is emitted as a JSON object, perfect for incremental consumption.
 * **Real-time streaming** – tail logs from a booted simulator or a specific device with `xcw tail`.
 * **Historical queries** – query past logs with `xcw query` using relative durations such as `--since 5m`.
-* **Smart filtering** – filter by app bundle ID, log level, regex patterns, or exclude noise.
+* **Smart filtering** – filter by app bundle ID, log level, regex patterns, field values (`--where`), or exclude noise.
+* **Log discovery** – use `xcw discover` to understand what subsystems, categories, and processes exist before filtering.
+* **Deduplication** – collapse repeated identical messages with `--dedupe` to reduce noise.
 * **AI-friendly summaries & pattern detection** – periodic summary markers and analysis mode group similar errors and track new vs known patterns.
 * **Session-based recording & replay** – write logs to timestamped files for later analysis and replay them with original timing.
 * **Persistent monitoring** – run `xcw tail` in a tmux session to keep logs streaming in the background across terminals.
@@ -124,11 +126,11 @@ xcw tail -a com.example.myapp
 # tail logs from a named simulator
 xcw tail -s "iPhone 15 Pro" -a com.example.myapp
 
-# filter logs by regex
-xcw tail -a com.example.myapp -p "error|warning"
+# filter logs by regex (--filter or --pattern or -p)
+xcw tail -a com.example.myapp --filter "error|warning"
 
-# exclude noisy messages
-xcw tail -a com.example.myapp -x "heartbeat|keepalive"
+# exclude noisy messages (can be repeated)
+xcw tail -a com.example.myapp -x heartbeat -x keepalive -x routine
 
 # limit log level range
 xcw tail -a com.example.myapp --min-level info --max-level error
@@ -139,6 +141,59 @@ xcw tail -a com.example.myapp --tmux
 # write logs to a timestamped file in ~/.xcw/sessions
 xcw tail -a com.example.myapp --session-dir ~/.xcw/sessions
 ```
+
+## Advanced filtering
+
+`xcw` provides powerful filtering options for finding exactly the logs you need:
+
+```sh
+# filter by field with --where (supports =, !=, ~, !~, >=, <=, ^, $)
+xcw tail -a com.example.myapp --where level=error
+xcw tail -a com.example.myapp --where "message~timeout"
+xcw tail -a com.example.myapp --where "subsystem^com.example"
+
+# combine multiple where clauses (AND logic)
+xcw tail -a com.example.myapp --where level>=error --where "message~network"
+
+# filter by process name
+xcw tail -a com.example.myapp --process MyApp --process MyAppExtension
+
+# collapse repeated identical messages
+xcw tail -a com.example.myapp --dedupe
+xcw tail -a com.example.myapp --dedupe --dedupe-window 5s
+```
+
+**Where operators:**
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `=` | Equals | `level=error` |
+| `!=` | Not equals | `level!=debug` |
+| `~` | Contains (regex) | `message~timeout` |
+| `!~` | Not contains | `message!~heartbeat` |
+| `>=` | Greater or equal (for levels) | `level>=error` |
+| `<=` | Less or equal (for levels) | `level<=info` |
+| `^` | Starts with | `subsystem^com.example` |
+| `$` | Ends with | `message$failed` |
+
+**Supported fields:** `level`, `subsystem`, `category`, `process`, `message`, `pid`
+
+## Discovering log sources
+
+Use `xcw discover` to understand what subsystems, categories, and processes are generating logs:
+
+```sh
+# discover all logs from the last 5 minutes
+xcw discover -s "iPhone 17 Pro" --since 5m
+
+# discover logs for a specific app
+xcw discover -s "iPhone 17 Pro" -a com.example.myapp --since 10m
+
+# show more results
+xcw discover -b --since 1h --top-n 30
+```
+
+This is especially useful for AI agents to understand the logging landscape before applying filters.
 
 ## Pre-launch log capture
 
