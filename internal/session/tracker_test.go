@@ -209,7 +209,7 @@ func TestTrackerGetFinalSummary(t *testing.T) {
 	assert.Equal(t, 1, summary.Summary.Errors)
 }
 
-func TestTrackerIgnoresOtherSubsystems(t *testing.T) {
+func TestTrackerDetectsPIDChangeAnySubsystem(t *testing.T) {
 	tracker := NewTracker("com.example.app", "iPhone 17 Pro", "ABC123")
 
 	// Initialize with our app
@@ -217,15 +217,35 @@ func TestTrackerIgnoresOtherSubsystems(t *testing.T) {
 		PID: 100, Subsystem: "com.example.app", Level: domain.LogLevelInfo,
 	})
 
-	// Log from different app - should still increment counts
+	// Log with different PID and different subsystem - should detect relaunch
+	// because streamer already filters by app, so any log we receive is relevant
 	change := tracker.CheckEntry(&domain.LogEntry{
 		PID: 200, Subsystem: "com.apple.system", Level: domain.LogLevelInfo,
 	})
 
-	// Should not trigger session change for different app
-	assert.Nil(t, change)
+	// Should trigger session change since PID changed
+	require.NotNil(t, change)
+	assert.Equal(t, "APP_RELAUNCHED", change.StartSession.Alert)
+	assert.Equal(t, 2, change.StartSession.Session)
+	assert.Equal(t, 200, change.StartSession.PID)
+	assert.Equal(t, 100, change.StartSession.PreviousPID)
+}
 
-	// Counts should still increment
-	_, _, logs, _, _ := tracker.Stats()
-	assert.Equal(t, 2, logs)
+func TestTrackerDetectsPIDChangeEmptySubsystem(t *testing.T) {
+	tracker := NewTracker("com.example.app", "iPhone 17 Pro", "ABC123")
+
+	// Initialize with our app
+	tracker.CheckEntry(&domain.LogEntry{
+		PID: 100, Subsystem: "com.example.app", Level: domain.LogLevelInfo,
+	})
+
+	// Log with different PID and EMPTY subsystem - this was the bug case
+	change := tracker.CheckEntry(&domain.LogEntry{
+		PID: 200, Subsystem: "", Level: domain.LogLevelInfo,
+	})
+
+	// Should trigger session change since PID changed
+	require.NotNil(t, change)
+	assert.Equal(t, "APP_RELAUNCHED", change.StartSession.Alert)
+	assert.Equal(t, 2, change.StartSession.Session)
 }

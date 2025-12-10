@@ -42,16 +42,9 @@ func (t *Tracker) CheckEntry(entry *domain.LogEntry) *SessionChange {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Only track entries matching our app's bundle ID
-	if entry.Subsystem != t.app && !t.matchesApp(entry) {
-		// Still increment counts if we're tracking
-		if t.initialized {
-			t.logCount++
-			t.updateCounts(entry)
-		}
-		return nil
-	}
-
+	// Check PID for ALL logs - the streamer already filters by app, so any log
+	// we receive is relevant. Don't filter by subsystem since many apps emit
+	// logs with empty subsystem, process name, or Apple's default subsystems.
 	pid := entry.PID
 
 	// First entry - initialize session
@@ -117,14 +110,6 @@ func (t *Tracker) CheckEntry(entry *domain.LogEntry) *SessionChange {
 	return nil
 }
 
-// matchesApp checks if entry is from our app by process name or subsystem prefix
-func (t *Tracker) matchesApp(entry *domain.LogEntry) bool {
-	// Check if subsystem starts with our bundle ID
-	if len(entry.Subsystem) >= len(t.app) && entry.Subsystem[:len(t.app)] == t.app {
-		return true
-	}
-	return false
-}
 
 // updateCounts updates error/fault counts based on log level
 func (t *Tracker) updateCounts(entry *domain.LogEntry) {
