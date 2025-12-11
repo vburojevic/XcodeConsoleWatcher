@@ -48,6 +48,7 @@ type Streamer struct {
 	totalCount int
 	errorCount int
 	faultCount int
+	dropped    int
 }
 
 // NewStreamer creates a new log streamer
@@ -210,6 +211,14 @@ func (s *Streamer) runLogStream(ctx context.Context) error {
 
 		entry, err := s.parser.Parse(line)
 		if err != nil {
+			// Track dropped lines; emit periodic diagnostics
+			s.mu.Lock()
+			s.dropped++
+			drops := s.dropped
+			s.mu.Unlock()
+			if drops%500 == 0 {
+				s.sendError(fmt.Errorf("parse_drop: %d lines could not be parsed", drops))
+			}
 			continue // Skip unparseable lines
 		}
 
@@ -415,4 +424,11 @@ func (s *Streamer) GetStats() (total, errors, faults int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.totalCount, s.errorCount, s.faultCount
+}
+
+// GetDropped returns number of dropped (unparseable) log lines
+func (s *Streamer) GetDropped() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dropped
 }
