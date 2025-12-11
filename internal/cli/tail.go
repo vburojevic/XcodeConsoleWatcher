@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -76,6 +77,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 	// Validate mutual exclusivity of flags
 	if c.Simulator != "" && c.Booted {
 		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
+	}
+	if c.DryRunJSON && c.Tmux {
+		return c.outputError(globals, "INVALID_FLAGS", "--dry-run-json cannot be combined with --tmux")
+	}
+	if globals.Format == "text" && globals.Config != nil && globals.Config.Quiet && !c.NoAgentHints && globals.Config.Format == "ndjson" {
+		// no-op, just clarity
 	}
 
 	// Find the simulator
@@ -300,6 +307,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 		RawPredicate:      c.Predicate,
 	}
 
+	if c.DryRunJSON {
+		enc := json.NewEncoder(globals.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(opts)
+	}
+
 	globals.Debug("Stream options: BundleID=%s, MinLevel=%s, BufferSize=%d", opts.BundleID, opts.MinLevel, opts.BufferSize)
 	if opts.Pattern != nil {
 		globals.Debug("Pattern filter: %s", opts.Pattern.String())
@@ -338,11 +351,16 @@ func (c *TailCmd) Run(globals *Globals) error {
 	sessionTracker := session.NewTracker(c.App, device.Name, device.UDID, tailID, appVersion, appBuild)
 	globals.Debug("Session tracking enabled")
 
+	// Emit metadata for agents
+	if globals.Format == "ndjson" {
+		output.NewNDJSONWriter(outputWriter).WriteMetadata(Version, Commit, "")
+	}
+
 	// Emit ready event when --wait-for-launch is used (signals log capture is active)
 	if c.WaitForLaunch {
 		if globals.Format == "ndjson" {
 			output.NewNDJSONWriter(globals.Stdout).WriteReady(
-				time.Now().Format(time.RFC3339Nano),
+				time.Now().UTC().Format(time.RFC3339Nano),
 				device.Name,
 				device.UDID,
 				c.App,
@@ -398,6 +416,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 	startTime := time.Now()
 	logsSinceLast := 0
 	lastSeen := time.Now()
+	totalLogs := 0
 
 	// Parse idle timeout for session rollover
 	var idleTimer *time.Timer
@@ -557,10 +576,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 				return err
 			}
 			logsSinceLast++
+			totalLogs++
 			lastSeen = time.Now()
-			if maxLogs > 0 && logsSinceLast >= maxLogs {
+			if maxLogs > 0 && totalLogs >= maxLogs {
 				if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
 					output.NewNDJSONWriter(outputWriter).WriteSessionEnd(final)
+					output.NewNDJSONWriter(outputWriter).WriteCutoff("max_logs", tailID, final.Session, totalLogs)
 				}
 				return nil
 			}
@@ -568,7 +589,11 @@ func (c *TailCmd) Run(globals *Globals) error {
 		case err := <-streamer.Errors():
 			if !globals.Quiet {
 				if globals.Format == "ndjson" {
-					output.NewNDJSONWriter(outputWriter).WriteWarning(err.Error())
+					if strings.HasPrefix(err.Error(), "reconnect_notice:") {
+						output.NewNDJSONWriter(outputWriter).WriteReconnect(err.Error(), tailID)
+					} else {
+						output.NewNDJSONWriter(outputWriter).WriteWarning(err.Error())
+					}
 				} else {
 					fmt.Fprintf(globals.Stderr, "Warning: %s\n", err.Error())
 				}
@@ -595,6 +620,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			if cutoffTimer != nil {
 				if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
 					output.NewNDJSONWriter(outputWriter).WriteSessionEnd(final)
+					output.NewNDJSONWriter(outputWriter).WriteCutoff("max_duration", tailID, final.Session, totalLogs)
 				}
 				return nil
 			}
@@ -602,12 +628,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 			heartbeat := &output.Heartbeat{
 				Type:              "heartbeat",
 				SchemaVersion:     output.SchemaVersion,
-				Timestamp:         time.Now().Format(time.RFC3339Nano),
+				Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
 				UptimeSeconds:     int64(time.Since(startTime).Seconds()),
 				LogsSinceLast:     logsSinceLast,
 				TailID:            tailID,
 				LatestSession:     sessionTracker.CurrentSession(),
-				LastSeenTimestamp: lastSeen.Format(time.RFC3339Nano),
+				LastSeenTimestamp: lastSeen.UTC().Format(time.RFC3339Nano),
 			}
 			writer.WriteHeartbeat(heartbeat)
 			logsSinceLast = 0

@@ -39,14 +39,14 @@ type OutputEntry struct {
 
 // Heartbeat is a keepalive message for AI agents
 type Heartbeat struct {
-	Type            string `json:"type"`
-	SchemaVersion   int    `json:"schemaVersion"`
-	Timestamp       string `json:"timestamp"`
-	UptimeSeconds   int64  `json:"uptime_seconds"`
-	LogsSinceLast   int    `json:"logs_since_last"`
-	TailID          string `json:"tail_id,omitempty"`
-	ContractVersion int    `json:"contract_version,omitempty"`
-	LatestSession   int    `json:"latest_session,omitempty"`
+	Type              string `json:"type"`
+	SchemaVersion     int    `json:"schemaVersion"`
+	Timestamp         string `json:"timestamp"`
+	UptimeSeconds     int64  `json:"uptime_seconds"`
+	LogsSinceLast     int    `json:"logs_since_last"`
+	TailID            string `json:"tail_id,omitempty"`
+	ContractVersion   int    `json:"contract_version,omitempty"`
+	LatestSession     int    `json:"latest_session,omitempty"`
 	LastSeenTimestamp string `json:"last_seen_timestamp,omitempty"`
 }
 
@@ -66,6 +66,26 @@ type WarningOutput struct {
 	Type          string `json:"type"` // Always "warning"
 	SchemaVersion int    `json:"schemaVersion"`
 	Message       string `json:"message"`
+}
+
+// MetadataOutput describes runtime/tool metadata for agents
+type MetadataOutput struct {
+	Type            string `json:"type"` // Always "metadata"
+	SchemaVersion   int    `json:"schemaVersion"`
+	Version         string `json:"version"`
+	Commit          string `json:"commit"`
+	BuildDate       string `json:"build_date,omitempty"`
+	ContractVersion int    `json:"contract_version,omitempty"`
+}
+
+// CutoffOutput describes an intentional stream cutoff
+type CutoffOutput struct {
+	Type          string `json:"type"` // Always "cutoff_reached"
+	SchemaVersion int    `json:"schemaVersion"`
+	Reason        string `json:"reason"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	TotalLogs     int    `json:"total_logs,omitempty"`
 }
 
 // ReconnectNotice signals a stream reconnect
@@ -205,6 +225,30 @@ func (w *NDJSONWriter) WriteWarning(message string) error {
 		Type:          "warning",
 		SchemaVersion: SchemaVersion,
 		Message:       message,
+	})
+}
+
+// WriteMetadata outputs runtime metadata
+func (w *NDJSONWriter) WriteMetadata(version, commit, buildDate string) error {
+	return w.encoder.Encode(&MetadataOutput{
+		Type:            "metadata",
+		SchemaVersion:   SchemaVersion,
+		Version:         version,
+		Commit:          commit,
+		BuildDate:       buildDate,
+		ContractVersion: 1,
+	})
+}
+
+// WriteCutoff outputs a cutoff marker
+func (w *NDJSONWriter) WriteCutoff(reason, tailID string, session, total int) error {
+	return w.encoder.Encode(&CutoffOutput{
+		Type:          "cutoff_reached",
+		SchemaVersion: SchemaVersion,
+		Reason:        reason,
+		TailID:        tailID,
+		Session:       session,
+		TotalLogs:     total,
 	})
 }
 
