@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2025-12-11
+
+### Added
+- Rotation NDJSON event (`rotation`) emitted on per-session file switches, with schema update.
+- Safer watch triggers via `--trigger-no-shell` to bypass `sh -c` when desired.
+- Flexible filtering: numeric `--where` comparisons for `pid`/`tid`, quoted values, and glob/regex process matching.
+- Hot-path benchmarks for parser, filters, and analyzer.
+- Contributor docs: `CONTRIBUTING.md`, `ROADMAP.md`, and `AGENTS.md`.
+
+### Changed
+- Simulator device listing now uses a short TTL cache to reduce `simctl` overhead.
+- Streamer reconnect jitter uses per-stream RNG; shutdown waits for goroutines and closes channels cleanly.
+- Timestamp parsing supports arbitrary offsets/fractional precision; verbose mode surfaces parse drops.
+- Analyzer no longer depends on `samber/lo`, reducing dependency surface.
+- TUI performance improved with incremental filtering/viewport updates; added follow/details toggles and search highlighting.
+- Config load validates enums/durations/limits early and fails fast with structured errors.
+
 ## [0.15.1] - 2025-12-11
 
 ### Fixed
