@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Generated machine-readable help (`docs/help.json`) and schema (`schemas/generated.schema.json`) to keep docs in sync.
+- Added tests covering filter pipeline, tail flag parsing, and session tracker binary UUID detection.
 
 ## [0.12.0] - 2025-12-11
 
