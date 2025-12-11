@@ -9,4 +9,3 @@ echo "Generating $OUT from xcw help --json"
 cd "$ROOT"
 go run ./cmd/xcw help --json > "$OUT"
 echo "Done. Review $OUT and sync snippets into README.md as needed."
-

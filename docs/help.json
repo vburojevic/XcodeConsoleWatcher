@@ -1,0 +1,694 @@
+{
+  "type": "documentation",
+  "version": "0.12.0",
+  "purpose": "iOS Simulator log streaming CLI optimized for AI agents. Outputs structured NDJSON for real-time and historical log access.",
+  "primary_command": "tail",
+  "agent_guidance": "ALWAYS START WITH: xcw tail -s \u003csimulator\u003e -a \u003cbundle_id\u003e. This is THE primary command for monitoring iOS app logs. Run 'xcw list' to get simulator names, and 'xcw apps' to get bundle IDs. Only use other commands (query, watch, analyze) for specific use cases AFTER you've tried tail. The 'query' command reads from macOS system logs and is only useful when you forgot to start tail. Tmux (--tmux) is for human visual monitoring; AI agents should use stdout or --output instead.",
+  "quick_start": {
+    "analyze_session": "xcw analyze $(xcw sessions show --latest)",
+    "check_setup": "xcw doctor",
+    "discover_log_sources": "xcw discover -s \"iPhone 17 Pro\" -a com.example.myapp --since 5m",
+    "filter_by_field": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --where level=error",
+    "list_apps": "xcw apps -s \"iPhone 17 Pro\"",
+    "list_simulators": "xcw list",
+    "machine_friendly": "xcw --machine-friendly tail -s \"iPhone 17 Pro\" -a com.example.myapp",
+    "record_to_file": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --session-dir ~/.xcw/sessions",
+    "stream_logs": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp"
+  },
+  "commands": {
+    "analyze": {
+      "description": "Analyze a recorded NDJSON log file",
+      "usage": "xcw analyze FILE [flags]",
+      "examples": [
+        {
+          "command": "xcw analyze session.ndjson",
+          "description": "Analyze recorded logs"
+        }
+      ],
+      "output_types": [
+        "analysis",
+        "error"
+      ],
+      "related_commands": [
+        "tail",
+        "replay"
+      ]
+    },
+    "apps": {
+      "description": "List installed apps on a simulator",
+      "usage": "xcw apps -s SIMULATOR [flags]",
+      "examples": [
+        {
+          "command": "xcw apps -s \"iPhone 17 Pro\"",
+          "description": "All apps"
+        },
+        {
+          "command": "xcw apps -s \"iPhone 17 Pro\" --user-only",
+          "description": "User apps only"
+        }
+      ],
+      "output_types": [
+        "app",
+        "error"
+      ]
+    },
+    "discover": {
+      "description": "Discover what subsystems, categories, and processes exist in logs. Essential first step for understanding an app's logging landscape.",
+      "usage": "xcw discover -s SIMULATOR [-a APP] --since DURATION",
+      "examples": [
+        {
+          "command": "xcw discover -s \"iPhone 17 Pro\" --since 5m",
+          "description": "Discover all logs from last 5 minutes"
+        },
+        {
+          "command": "xcw discover -s \"iPhone 17 Pro\" -a com.example.myapp --since 10m",
+          "description": "Discover logs for specific app"
+        },
+        {
+          "command": "xcw discover -b --since 1h --top-n 30",
+          "description": "More items, booted sim, 1 hour"
+        }
+      ],
+      "output_types": [
+        "discovery",
+        "error"
+      ],
+      "related_commands": [
+        "tail",
+        "query"
+      ]
+    },
+    "doctor": {
+      "description": "Check system requirements and configuration",
+      "usage": "xcw doctor",
+      "examples": [
+        {
+          "command": "xcw doctor",
+          "description": "Run all checks"
+        }
+      ],
+      "output_types": [
+        "doctor",
+        "error"
+      ]
+    },
+    "examples": {
+      "description": "Show usage examples for xcw commands",
+      "usage": "xcw examples [command] [flags]",
+      "examples": [
+        {
+          "command": "xcw examples",
+          "description": "All examples"
+        },
+        {
+          "command": "xcw examples tail",
+          "description": "Tail examples"
+        },
+        {
+          "command": "xcw examples --json",
+          "description": "Machine-readable"
+        }
+      ]
+    },
+    "launch": {
+      "description": "Launch an app and capture stdout/stderr (print statements). Use this when you need to see print() output that isn't captured by unified logging.",
+      "usage": "xcw launch -s SIMULATOR -a APP [flags]",
+      "examples": [
+        {
+          "command": "xcw launch -s \"iPhone 17 Pro\" -a com.example.myapp",
+          "description": "Launch and capture stdout/stderr"
+        },
+        {
+          "command": "xcw launch -s \"iPhone 17 Pro\" -a com.example.myapp --terminate-existing",
+          "description": "Terminate existing instance first"
+        },
+        {
+          "command": "xcw launch -b -a com.example.myapp",
+          "description": "Launch on booted simulator"
+        }
+      ],
+      "output_types": [
+        "console",
+        "info",
+        "error"
+      ],
+      "related_commands": [
+        "tail",
+        "apps"
+      ]
+    },
+    "list": {
+      "description": "List available iOS Simulators",
+      "usage": "xcw list [flags]",
+      "examples": [
+        {
+          "command": "xcw list",
+          "description": "All simulators"
+        },
+        {
+          "command": "xcw list --booted-only",
+          "description": "Only running simulators"
+        }
+      ],
+      "output_types": [
+        "simulator",
+        "error"
+      ]
+    },
+    "query": {
+      "description": "Query historical logs from iOS Simulator",
+      "usage": "xcw query -s SIMULATOR -a APP --since DURATION [flags]",
+      "examples": [
+        {
+          "command": "xcw query -s \"iPhone 17 Pro\" -a com.example.myapp --since 5m",
+          "description": "Last 5 minutes"
+        },
+        {
+          "command": "xcw query -s \"iPhone 17 Pro\" -a com.example.myapp --since 5m -l error",
+          "description": "Errors only"
+        },
+        {
+          "command": "xcw query -s \"iPhone 17 Pro\" -a com.example.myapp --since 10m --analyze",
+          "description": "With pattern analysis"
+        }
+      ],
+      "output_types": [
+        "log",
+        "analysis",
+        "error"
+      ],
+      "related_commands": [
+        "tail",
+        "analyze"
+      ]
+    },
+    "replay": {
+      "description": "Replay a recorded NDJSON log file with timing",
+      "usage": "xcw replay FILE [flags]",
+      "examples": [
+        {
+          "command": "xcw replay session.ndjson",
+          "description": "Replay with original timing"
+        },
+        {
+          "command": "xcw replay session.ndjson --speed 2",
+          "description": "2x speed"
+        }
+      ],
+      "output_types": [
+        "log",
+        "error"
+      ],
+      "related_commands": [
+        "analyze",
+        "tail"
+      ]
+    },
+    "schema": {
+      "description": "Output JSON Schema for xcw output types",
+      "usage": "xcw schema [flags]",
+      "examples": [
+        {
+          "command": "xcw schema",
+          "description": "Full schema"
+        },
+        {
+          "command": "xcw schema --type log,error",
+          "description": "Specific types"
+        }
+      ]
+    },
+    "sessions": {
+      "description": "Manage session log files",
+      "usage": "xcw sessions [list|show|clean]",
+      "examples": [
+        {
+          "command": "xcw sessions list",
+          "description": "List recent sessions"
+        },
+        {
+          "command": "xcw sessions show --latest",
+          "description": "Path to latest session"
+        },
+        {
+          "command": "xcw sessions clean --keep 10",
+          "description": "Keep 10 most recent"
+        }
+      ],
+      "output_types": [
+        "session",
+        "info",
+        "error"
+      ]
+    },
+    "tail": {
+      "description": "Stream real-time logs from iOS Simulator",
+      "usage": "xcw tail -s SIMULATOR -a APP [flags]",
+      "examples": [
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp",
+          "description": "Basic streaming to stdout"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --tmux",
+          "description": "Background with tmux (returns session name)"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --output file.ndjson",
+          "description": "Stream to file"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp -l error",
+          "description": "Only error/fault level"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --filter \"error|warn\"",
+          "description": "Filter by regex (alias for --pattern)"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --wait-for-launch",
+          "description": "Start capture before app launches (emits ready event)"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --where level=error",
+          "description": "Filter by field (supports =, !=, ~, !~, \u003e=, \u003c=, ^, $)"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --where \"message~timeout\"",
+          "description": "Filter messages containing 'timeout'"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --dedupe",
+          "description": "Collapse repeated identical messages"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --process MyApp --process MyAppExtension",
+          "description": "Filter by process name"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp -x noise -x spam",
+          "description": "Exclude multiple patterns"
+        },
+        {
+          "command": "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --session-idle 60s",
+          "description": "Force a new session boundary after 60s of inactivity"
+        }
+      ],
+      "output_types": [
+        "log",
+        "session_start",
+        "session_end",
+        "ready",
+        "summary",
+        "heartbeat",
+        "tmux",
+        "error"
+      ],
+      "related_commands": [
+        "query",
+        "watch",
+        "analyze",
+        "discover"
+      ]
+    }
+  },
+  "output_types": {
+    "analysis": {
+      "description": "Pattern analysis of logs",
+      "example": {
+        "known_pattern_count": 2,
+        "new_pattern_count": 1,
+        "patterns": [
+          {
+            "count": 3,
+            "is_new": true,
+            "pattern": "Connection failed"
+          }
+        ],
+        "schemaVersion": 1,
+        "summary": {
+          "errorCount": 5,
+          "totalCount": 100
+        },
+        "type": "analysis"
+      },
+      "when": "When --analyze flag is used with query or analyze command"
+    },
+    "app": {
+      "description": "Installed app information",
+      "example": {
+        "app_type": "user",
+        "bundle_id": "com.example.myapp",
+        "name": "MyApp",
+        "schemaVersion": 1,
+        "type": "app",
+        "version": "1.0.0"
+      },
+      "when": "From xcw apps command"
+    },
+    "clear_buffer": {
+      "description": "Instructs consumers to reset caches at a session boundary (start/end/idle rollover).",
+      "example": {
+        "reason": "session_start",
+        "schemaVersion": 1,
+        "session": 2,
+        "tail_id": "tail-abc",
+        "type": "clear_buffer"
+      },
+      "when": "Immediately after session_start/session_end/idle rollover in NDJSON mode"
+    },
+    "console": {
+      "description": "Console output (stdout/stderr) from xcw launch. Captures print() statements not available via unified logging.",
+      "example": {
+        "message": "Hello from print()",
+        "process": "com.example.myapp",
+        "schemaVersion": 1,
+        "stream": "stdout",
+        "timestamp": "2024-01-15T10:30:45.123Z",
+        "type": "console"
+      },
+      "when": "Each line of stdout/stderr from xcw launch"
+    },
+    "cutoff_reached": {
+      "description": "Emitted when max-duration or max-logs cutoff stops streaming.",
+      "example": {
+        "reason": "max_duration",
+        "schemaVersion": 1,
+        "session": 2,
+        "tail_id": "tail-abc",
+        "total_logs": 500,
+        "type": "cutoff_reached"
+      },
+      "when": "When cutoff thresholds are hit"
+    },
+    "discovery": {
+      "description": "Log discovery results showing subsystems, categories, processes, and levels",
+      "example": {
+        "app": "com.example.myapp",
+        "categories": [
+          {
+            "count": 300,
+            "name": "network"
+          }
+        ],
+        "levels": {
+          "debug": 700,
+          "error": 80,
+          "info": 350
+        },
+        "processes": [
+          {
+            "count": 800,
+            "name": "MyApp"
+          }
+        ],
+        "schemaVersion": 1,
+        "subsystems": [
+          {
+            "count": 450,
+            "levels": {
+              "debug": 300,
+              "error": 50,
+              "info": 100
+            },
+            "name": "com.example.myapp"
+          }
+        ],
+        "time_range": {
+          "end": "2024-01-15T10:30:45Z",
+          "start": "2024-01-15T10:25:45Z"
+        },
+        "total_count": 1250,
+        "type": "discovery"
+      },
+      "when": "From xcw discover command"
+    },
+    "doctor": {
+      "description": "System diagnostic report",
+      "example": {
+        "all_passed": true,
+        "checks": [
+          {
+            "message": "Xcode 16.0 found",
+            "name": "Xcode",
+            "status": "ok"
+          },
+          {
+            "message": "1 booted simulator",
+            "name": "Simulator",
+            "status": "ok"
+          }
+        ],
+        "error_count": 0,
+        "schemaVersion": 1,
+        "type": "doctor",
+        "warn_count": 1
+      },
+      "when": "From xcw doctor command"
+    },
+    "error": {
+      "description": "Error from xcw (not the app being monitored)",
+      "example": {
+        "code": "DEVICE_NOT_FOUND",
+        "message": "Simulator 'iPhone 99' not found",
+        "schemaVersion": 1,
+        "type": "error"
+      },
+      "when": "When xcw encounters an error"
+    },
+    "heartbeat": {
+      "description": "Keepalive message for stream health",
+      "example": {
+        "logs_since_last": 42,
+        "schemaVersion": 1,
+        "timestamp": "2024-01-15T10:30:45.123Z",
+        "type": "heartbeat",
+        "uptime_seconds": 300
+      },
+      "when": "Periodically when --heartbeat is used"
+    },
+    "log": {
+      "description": "Individual log entry from iOS Simulator. Includes session number for tracking app relaunches.",
+      "example": {
+        "category": "network",
+        "level": "Error",
+        "message": "Connection failed: timeout",
+        "pid": 1234,
+        "process": "MyApp",
+        "schemaVersion": 1,
+        "session": 1,
+        "subsystem": "com.example.myapp",
+        "tail_id": "tail-abc",
+        "timestamp": "2024-01-15T10:30:45.123Z",
+        "type": "log"
+      },
+      "when": "Each log entry during tail or query"
+    },
+    "metadata": {
+      "description": "Tool metadata emitted at start of tail for agents.",
+      "example": {
+        "commit": "none",
+        "contract_version": 1,
+        "schemaVersion": 1,
+        "type": "metadata",
+        "version": "0.10.0"
+      },
+      "when": "At tail start"
+    },
+    "ready": {
+      "description": "Signals that log capture is active and ready. Use with --wait-for-launch to start capturing before the app launches.",
+      "example": {
+        "app": "com.example.myapp",
+        "schemaVersion": 1,
+        "simulator": "iPhone 17 Pro",
+        "timestamp": "2024-01-15T10:30:45.123Z",
+        "type": "ready",
+        "udid": "ABC123-DEF456-..."
+      },
+      "when": "Immediately after log stream starts when --wait-for-launch is used"
+    },
+    "reconnect_notice": {
+      "description": "Signals that the log stream reconnected; agents should consider potential gaps.",
+      "example": {
+        "message": "reconnect_notice: reconnecting log stream",
+        "schemaVersion": 1,
+        "tail_id": "tail-abc",
+        "type": "reconnect_notice"
+      },
+      "when": "After reconnect attempts"
+    },
+    "session": {
+      "description": "Session file information",
+      "example": {
+        "name": "20241215-103045-com.example.myapp.ndjson",
+        "path": "~/.xcw/sessions/20241215-103045-com.example.myapp.ndjson",
+        "schemaVersion": 1,
+        "size": 12345,
+        "timestamp": "2024-12-15T10:30:45Z",
+        "type": "session"
+      },
+      "when": "From xcw sessions list/show commands"
+    },
+    "session_end": {
+      "description": "Emitted when an app session ends (before session_start when app relaunches). Contains summary of the ended session.",
+      "example": {
+        "pid": 12345,
+        "schemaVersion": 1,
+        "session": 1,
+        "summary": {
+          "duration_seconds": 45,
+          "errors": 3,
+          "faults": 0,
+          "total_logs": 142
+        },
+        "tail_id": "tail-abc",
+        "type": "session_end"
+      },
+      "when": "When xcw tail detects the app was relaunched (before session_start)"
+    },
+    "session_start": {
+      "description": "Emitted when a new app session begins. When alert='APP_RELAUNCHED', the app was relaunched (PID changed). AI agents should watch for this to know logs are from a fresh app instance.",
+      "example": {
+        "alert": "APP_RELAUNCHED",
+        "app": "com.example.myapp",
+        "binary_uuid": "C0FFEE-UUID",
+        "build": "2201",
+        "pid": 67890,
+        "previous_pid": 12345,
+        "schemaVersion": 1,
+        "session": 2,
+        "simulator": "iPhone 17 Pro",
+        "tail_id": "tail-abc",
+        "timestamp": "2024-01-15T10:30:45.123Z",
+        "type": "session_start",
+        "udid": "ABC123-DEF456-...",
+        "version": "1.4.0"
+      },
+      "when": "When xcw tail detects the app was relaunched (PID changed)"
+    },
+    "simulator": {
+      "description": "Simulator device information",
+      "example": {
+        "name": "iPhone 17 Pro",
+        "runtime": "iOS 18.0",
+        "schemaVersion": 1,
+        "state": "Booted",
+        "type": "simulator",
+        "udid": "ABC123-DEF456-..."
+      },
+      "when": "From xcw list command"
+    },
+    "summary": {
+      "description": "Log statistics summary",
+      "example": {
+        "errorCount": 3,
+        "errorRate": 1.2,
+        "faultCount": 0,
+        "hasErrors": true,
+        "hasFaults": false,
+        "schemaVersion": 1,
+        "tail_id": "tail-abc",
+        "totalCount": 142,
+        "type": "summary"
+      },
+      "when": "At end of tail, with --summary-interval, or in analysis"
+    },
+    "tmux": {
+      "description": "Tmux session information when --tmux is used",
+      "example": {
+        "attach": "tmux attach -t xcw-iphone-17-pro",
+        "schemaVersion": 1,
+        "session": "xcw-iphone-17-pro",
+        "type": "tmux"
+      },
+      "when": "Immediately when xcw tail --tmux is called"
+    }
+  },
+  "error_codes": {
+    "DEVICE_NOT_FOUND": {
+      "description": "Simulator not found by name or UDID",
+      "recovery": "Run 'xcw list' to see available simulators"
+    },
+    "FILE_NOT_FOUND": {
+      "description": "Input file not found",
+      "recovery": "Check file path exists"
+    },
+    "INVALID_DURATION": {
+      "description": "Duration parsing failed",
+      "recovery": "Use format like '5m', '1h', '30s'"
+    },
+    "INVALID_FLAGS": {
+      "description": "--simulator and --booted used together",
+      "recovery": "Use only one of --simulator or --booted"
+    },
+    "INVALID_PATTERN": {
+      "description": "Regex pattern compilation failed",
+      "recovery": "Check regex syntax"
+    },
+    "LIST_APPS_FAILED": {
+      "description": "Failed to list apps",
+      "recovery": "Check simulator is booted"
+    },
+    "NO_BOOTED_SIMULATOR": {
+      "description": "No booted simulator when --booted used",
+      "recovery": "Boot a simulator in Xcode or use 'xcrun simctl boot'"
+    },
+    "QUERY_FAILED": {
+      "description": "Historical log query failed",
+      "recovery": "Check simulator is running"
+    },
+    "STREAM_FAILED": {
+      "description": "Log streaming failed",
+      "recovery": "Check simulator is running and accessible"
+    },
+    "TMUX_ERROR": {
+      "description": "tmux operation failed",
+      "recovery": "Check tmux is working: 'tmux list-sessions'"
+    },
+    "TMUX_NOT_INSTALLED": {
+      "description": "tmux not installed",
+      "recovery": "Install with 'brew install tmux'"
+    }
+  },
+  "workflows": [
+    {
+      "name": "codex_streaming",
+      "description": "Real-time log streaming for Codex/script-based agents",
+      "when": "Agent processes stdout line by line, reacting immediately to errors",
+      "steps": [
+        "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp",
+        "# Agent reads NDJSON lines from stdout",
+        "# Each line is a complete JSON object to parse"
+      ]
+    },
+    {
+      "name": "claude_code_background",
+      "description": "Background monitoring for Claude Code with on-demand queries",
+      "when": "Long-running session where agent does other work while logs stream",
+      "steps": [
+        "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --tmux",
+        "# Returns tmux session info immediately",
+        "# Agent continues with other work...",
+        "xcw query -s \"iPhone 17 Pro\" -a com.example.myapp --since 5m -l error",
+        "# Query errors when needed"
+      ]
+    },
+    {
+      "name": "test_run_capture",
+      "description": "Capture logs during test run for analysis",
+      "when": "Need persistent log record for replay or sharing",
+      "steps": [
+        "xcw tail -s \"iPhone 17 Pro\" -a com.example.myapp --output test-run.ndjson",
+        "# Run tests...",
+        "# Stop with Ctrl+C",
+        "xcw analyze test-run.ndjson"
+      ]
+    }
+  ],
+  "contract": [
+    "use latest session only",
+    "match tail_id to current tail invocation",
+    "reset caches on clear_buffer/session_start/session_end",
+    "use newest rotated file unless comparing runs"
+  ]
+}
