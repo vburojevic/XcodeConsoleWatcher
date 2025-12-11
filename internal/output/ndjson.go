@@ -16,9 +16,11 @@ type NDJSONWriter struct {
 
 // NewNDJSONWriter creates a new NDJSON writer
 func NewNDJSONWriter(w io.Writer) *NDJSONWriter {
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // keep logs unescaped and avoid extra allocations
 	return &NDJSONWriter{
 		w:       w,
-		encoder: json.NewEncoder(w),
+		encoder: enc,
 	}
 }
 

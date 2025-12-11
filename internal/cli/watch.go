@@ -97,6 +97,9 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	if c.Simulator != "" && c.Booted {
 		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
 	}
+	if globals.Format == "text" && globals.Quiet {
+		return c.outputError(globals, "INVALID_FLAGS", "--quiet is intended for ndjson output; use ndjson for agent consumption")
+	}
 
 	// Find the simulator
 	mgr := simulator.NewManager()

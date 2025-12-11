@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2025-12-11
+
+### Added
+- Context-aware debug logger prefixes tail/session ids for agent-friendly diagnostics.
+- NDJSON writer now disables HTML escaping to reduce overhead and keep raw log text intact.
+- Lifecycle NDJSON snippet test covering heartbeat, cutoff, and reconnect markers.
+
+### Changed
+- `tail`/`watch` flag validation now rejects quiet+text and enforces ndjson for dry-run-json.
+- `watch` uses shared filter helpers and level resolver.
+
 ## [0.11.1] - 2025-12-11
 
 ### Changed

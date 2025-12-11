@@ -63,6 +63,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 	// Unique ID for this tail invocation (carried on all events)
 	tailID := generateTailID()
+	var log *agentLogger
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -78,6 +79,12 @@ func (c *TailCmd) Run(globals *Globals) error {
 	}
 	if c.DryRunJSON && c.Tmux {
 		return c.outputError(globals, "INVALID_FLAGS", "--dry-run-json cannot be combined with --tmux")
+	}
+	if c.DryRunJSON && globals.Format != "ndjson" {
+		return c.outputError(globals, "INVALID_FLAGS", "--dry-run-json requires ndjson output")
+	}
+	if globals.Format == "text" && globals.Quiet {
+		return c.outputError(globals, "INVALID_FLAGS", "--quiet has no effect with text output; use ndjson for agents")
 	}
 	if globals.Format == "text" && globals.Config != nil && globals.Config.Quiet && !c.NoAgentHints && globals.Config.Format == "ndjson" {
 		// no-op, just clarity
@@ -314,6 +321,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 	// Create session tracker for detecting app relaunches
 	sessionTracker := session.NewTracker(c.App, device.Name, device.UDID, tailID, appVersion, appBuild)
+	log = newAgentLogger(globals, tailID, sessionTracker.CurrentSession)
 	globals.Debug("Session tracking enabled")
 
 	// Emit metadata for agents
@@ -451,6 +459,13 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 			// Check for session change (app relaunch)
 			if sessionChange := sessionTracker.CheckEntry(&entry); sessionChange != nil {
+				if log != nil {
+					if sessionChange.StartSession != nil {
+						log.Debug("session rollover -> %d (pid=%d)", sessionChange.StartSession.Session, sessionChange.StartSession.PID)
+					} else if sessionChange.EndSession != nil {
+						log.Debug("session ended -> %d", sessionChange.EndSession.Session)
+					}
+				}
 				// Session changed - emit events
 				if sessionChange.EndSession != nil {
 					// Output session end with summary
@@ -612,6 +627,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 				LastSeenTimestamp: lastSeen.UTC().Format(time.RFC3339Nano),
 			}
 			writer.WriteHeartbeat(heartbeat)
+			if log != nil {
+				log.Debug("heartbeat logs_since_last=%d latest_session=%d", logsSinceLast, heartbeat.LatestSession)
+			}
 			logsSinceLast = 0
 
 		case <-func() <-chan time.Time {
@@ -623,6 +641,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 			if idleTimer != nil {
 				// Emit forced rollover due to idle timeout
 				if sessionChange := sessionTracker.ForceRollover("IDLE_TIMEOUT"); sessionChange != nil {
+					if log != nil {
+						log.Debug("idle rollover -> %d (pid=%d)", sessionChange.StartSession.Session, sessionChange.StartSession.PID)
+					}
 					if sessionChange.EndSession != nil && emitter != nil {
 						emitter.SessionEnd(sessionChange.EndSession)
 						emitter.ClearBuffer("session_end", tailID, sessionChange.EndSession.Session)
