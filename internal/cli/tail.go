@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/benbjohnson/clock"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/vburojevic/xcw/internal/domain"
 	"github.com/vburojevic/xcw/internal/filter"
 	"github.com/vburojevic/xcw/internal/output"
@@ -48,6 +50,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 	// Unique ID for this tail invocation (carried on all events)
 	tailID := generateTailID()
 	var log *agentLogger
+	clk := clock.New()
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -312,7 +315,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 	if c.WaitForLaunch {
 		if emitter != nil {
 			emitter.Ready(
-				time.Now().UTC().Format(time.RFC3339Nano),
+				clk.Now().UTC().Format(time.RFC3339Nano),
 				device.Name,
 				device.UDID,
 				c.App,
@@ -323,55 +326,55 @@ func (c *TailCmd) Run(globals *Globals) error {
 				emitter.AgentHints(tailID, sessionTracker.CurrentSession(), defaultHints())
 			}
 		} else {
-			fmt.Fprintf(globals.Stderr, "Ready: log capture active for %s\n", c.App)
+			fmt.Fprintf(globals.Stderr, "%s\n", infoStyle.Render(fmt.Sprintf("Ready: log capture active for %s", c.App)))
 			if !c.NoAgentHints {
-				fmt.Fprintf(globals.Stderr, "[XCW] agent_hints: follow latest session, match tail_id=%s\n", tailID)
+				fmt.Fprintf(globals.Stderr, "%s\n", warnStyle.Render(fmt.Sprintf("agent_hints: follow latest session, match tail_id=%s", tailID)))
 			}
 		}
 	}
 
 	// Parse summary interval
-	var summaryTicker *time.Ticker
+	var summaryTicker *clock.Ticker
 	if c.SummaryInterval != "" {
 		interval, err := time.ParseDuration(c.SummaryInterval)
 		if err != nil {
 			return c.outputError(globals, "INVALID_INTERVAL", fmt.Sprintf("invalid summary interval: %s", err))
 		}
-		summaryTicker = time.NewTicker(interval)
+		summaryTicker = clk.Ticker(interval)
 		defer summaryTicker.Stop()
 	}
 
 	// Parse heartbeat interval
-	var heartbeatTicker *time.Ticker
+	var heartbeatTicker *clock.Ticker
 	if c.Heartbeat != "" {
 		interval, err := time.ParseDuration(c.Heartbeat)
 		if err != nil {
 			return c.outputError(globals, "INVALID_HEARTBEAT", fmt.Sprintf("invalid heartbeat interval: %s", err))
 		}
-		heartbeatTicker = time.NewTicker(interval)
+		heartbeatTicker = clk.Ticker(interval)
 		defer heartbeatTicker.Stop()
 	}
 
 	// Max duration/logs cutoffs
-	var cutoffTimer *time.Timer
+	var cutoffTimer *clock.Timer
 	if c.MaxDuration != "" {
 		dur, err := time.ParseDuration(c.MaxDuration)
 		if err != nil {
 			return c.outputError(globals, "INVALID_MAX_DURATION", fmt.Sprintf("invalid max duration: %s", err))
 		}
-		cutoffTimer = time.NewTimer(dur)
+		cutoffTimer = clk.Timer(dur)
 		defer cutoffTimer.Stop()
 	}
 	var maxLogs = c.MaxLogs
 
 	// Track metrics for heartbeat
-	startTime := time.Now()
+	startTime := clk.Now()
 	logsSinceLast := 0
-	lastSeen := time.Now()
+	lastSeen := clk.Now()
 	totalLogs := 0
 
 	// Parse idle timeout for session rollover
-	var idleTimer *time.Timer
+	var idleTimer *clock.Timer
 	var idleDuration time.Duration
 	if c.SessionIdle != "" {
 		var err error
@@ -379,7 +382,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 		if err != nil {
 			return c.outputError(globals, "INVALID_SESSION_IDLE", fmt.Sprintf("invalid session idle duration: %s", err))
 		}
-		idleTimer = time.NewTimer(idleDuration)
+		idleTimer = clk.Timer(idleDuration)
 		defer idleTimer.Stop()
 	}
 
@@ -414,7 +417,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 		select {
 		case <-ctx.Done():
 			// Output final summary
-			c.outputSummary(writer, streamer, tailID)
+			c.outputSummary(writer, streamer, tailID, clk.Now())
 			if final := sessionTracker.GetFinalSummary(); final != nil {
 				if emitter != nil {
 					emitter.SessionEnd(final)
@@ -488,8 +491,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 								sessionChange.EndSession.Summary.TotalLogs,
 								sessionChange.EndSession.Summary.Errors)
 						}
-						fmt.Fprintf(globals.Stderr, "[XCW] 🚀 NEW SESSION: App relaunched (PID: %d)%s\n",
+						msg := fmt.Sprintf("🚀 NEW SESSION: App relaunched (PID: %d)%s",
 							sessionChange.StartSession.PID, prevSummary)
+						fmt.Fprintf(globals.Stderr, "%s\n", bannerStyle.Render(msg))
 					}
 
 					// Output JSON session start event
@@ -543,7 +547,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			}
 			logsSinceLast++
 			totalLogs++
-			lastSeen = time.Now()
+			lastSeen = clk.Now()
 			if maxLogs > 0 && totalLogs >= maxLogs {
 				if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
 					emitter.SessionEnd(final)
@@ -551,8 +555,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 					emitter.WriteHeartbeat(&output.Heartbeat{
 						Type:              "heartbeat",
 						SchemaVersion:     output.SchemaVersion,
-						Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
-						UptimeSeconds:     int64(time.Since(startTime).Seconds()),
+						Timestamp:         clk.Now().UTC().Format(time.RFC3339Nano),
+						UptimeSeconds:     int64(clk.Since(startTime).Seconds()),
 						LogsSinceLast:     logsSinceLast,
 						TailID:            tailID,
 						LatestSession:     sessionTracker.CurrentSession(),
@@ -581,7 +585,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			}
 			return nil
 		}():
-			c.outputSummary(writer, streamer, tailID)
+			c.outputSummary(writer, streamer, tailID, clk.Now())
 
 		case <-func() <-chan time.Time {
 			if cutoffTimer != nil {
@@ -600,8 +604,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 					emitter.WriteHeartbeat(&output.Heartbeat{
 						Type:              "heartbeat",
 						SchemaVersion:     output.SchemaVersion,
-						Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
-						UptimeSeconds:     int64(time.Since(startTime).Seconds()),
+						Timestamp:         clk.Now().UTC().Format(time.RFC3339Nano),
+						UptimeSeconds:     int64(clk.Since(startTime).Seconds()),
 						LogsSinceLast:     logsSinceLast,
 						TailID:            tailID,
 						LatestSession:     sessionTracker.CurrentSession(),
@@ -615,8 +619,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 			*heartbeat = output.Heartbeat{
 				Type:              "heartbeat",
 				SchemaVersion:     output.SchemaVersion,
-				Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
-				UptimeSeconds:     int64(time.Since(startTime).Seconds()),
+				Timestamp:         clk.Now().UTC().Format(time.RFC3339Nano),
+				UptimeSeconds:     int64(clk.Since(startTime).Seconds()),
 				LogsSinceLast:     logsSinceLast,
 				TailID:            tailID,
 				LatestSession:     sessionTracker.CurrentSession(),
@@ -697,7 +701,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 func (c *TailCmd) outputSummary(writer interface {
 	WriteSummary(*domain.LogSummary) error
-}, streamer *simulator.Streamer, tailID string) {
+}, streamer *simulator.Streamer, tailID string, now time.Time) {
 	total, errors, faults := streamer.GetStats()
 	summary := &domain.LogSummary{
 		Type:       "summary",
@@ -706,7 +710,7 @@ func (c *TailCmd) outputSummary(writer interface {
 		FaultCount: faults,
 		HasErrors:  errors > 0,
 		HasFaults:  faults > 0,
-		WindowEnd:  time.Now(),
+		WindowEnd:  now,
 		TailID:     tailID,
 	}
 	writer.WriteSummary(summary)
@@ -734,3 +738,9 @@ func defaultHints() []string {
 		"use newest rotated file unless comparing runs",
 	}
 }
+
+var (
+	warnStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
+	infoStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
+	bannerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("46"))
+)

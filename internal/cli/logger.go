@@ -1,17 +1,25 @@
 package cli
 
-import "fmt"
+import "go.uber.org/zap"
 
-// agentLogger prefixes debug output with tail/session identifiers so AI agents
-// can correlate logs even when multiple tails run concurrently.
+// agentLogger wraps zap for verbose debug with tail/session context.
 type agentLogger struct {
+	sugared   *zap.SugaredLogger
 	globals   *Globals
 	tailID    string
 	sessionFn func() int
 }
 
 func newAgentLogger(globals *Globals, tailID string, sessionFn func() int) *agentLogger {
+	if globals == nil || !globals.Verbose {
+		return &agentLogger{}
+	}
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	cfg.Encoding = "json"
+	logger, _ := cfg.Build()
 	return &agentLogger{
+		sugared:   logger.Sugar(),
 		globals:   globals,
 		tailID:    tailID,
 		sessionFn: sessionFn,
@@ -19,16 +27,12 @@ func newAgentLogger(globals *Globals, tailID string, sessionFn func() int) *agen
 }
 
 func (l *agentLogger) Debug(format string, args ...interface{}) {
-	if l.globals == nil {
+	if l.sugared == nil {
 		return
 	}
-	prefix := ""
-	if l.tailID != "" {
-		prefix = fmt.Sprintf("[tail=%s", l.tailID)
-		if l.sessionFn != nil {
-			prefix += fmt.Sprintf(" session=%d", l.sessionFn())
-		}
-		prefix += "] "
+	session := 0
+	if l.sessionFn != nil {
+		session = l.sessionFn()
 	}
-	l.globals.Debug(prefix+format, args...)
+	l.sugared.With("tail_id", l.tailID, "session", session).Debugf(format, args...)
 }

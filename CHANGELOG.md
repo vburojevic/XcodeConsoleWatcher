@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2025-12-11
+
+### Added
+- Clock injection (benbjohnson/clock) for deterministic timers in tail/watch.
+- Zap-based verbose logger carrying tail_id/session.
+- Lipgloss-styled text output for human mode.
+- Session_debug NDJSON event and schema entry; embedded docs/schema via go:embed for offline use.
+- CI workflow with golangci-lint and doc/schema drift check.
+
+### Changed
+- Heartbeats pooled to reduce allocations; filter pipeline reused across commands.
+- Dedupe respects entry timestamps for windowed mode.
+- Structured errors now support optional hint field.
+
 ## [0.13.1] - 2025-12-11
 
 ### Added

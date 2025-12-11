@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+      - name: Run golangci-lint
+        run: golangci-lint run ./...
+      - name: Regenerate docs/schema
+        run: |
+          go run ./cmd/xcw help --json > docs/help.json
+          go run ./cmd/xcw schema > schemas/generated.schema.json
+      - name: Check drift
+        run: git diff --exit-code docs/help.json schemas/generated.schema.json
+      - name: Go test
+        run: go test ./...
+

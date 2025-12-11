@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/benbjohnson/clock"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/vburojevic/xcw/internal/domain"
 	"github.com/vburojevic/xcw/internal/output"
 	"github.com/vburojevic/xcw/internal/simulator"
@@ -50,10 +52,16 @@ type triggerConfig struct {
 	command string
 }
 
+var (
+	watchInfoStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
+	watchWarnStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
+)
+
 // Run executes the watch command
 func (c *WatchCmd) Run(globals *Globals) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	clk := clock.New()
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -202,13 +210,13 @@ func (c *WatchCmd) Run(globals *Globals) error {
 				fmt.Sprintf("Watching logs from %s", device.Name),
 				device.Name, device.UDID, "", "trigger")
 		} else {
-			fmt.Fprintf(globals.Stderr, "Watching logs from %s (%s)\n", device.Name, device.UDID)
+			fmt.Fprintf(globals.Stderr, "%s\n", watchInfoStyle.Render(fmt.Sprintf("Watching logs from %s (%s)", device.Name, device.UDID)))
 			fmt.Fprintf(globals.Stderr, "App: %s\n", c.App)
 			if c.OnError != "" {
-				fmt.Fprintf(globals.Stderr, "On error: %s\n", c.OnError)
+				fmt.Fprintf(globals.Stderr, "%s\n", watchWarnStyle.Render(fmt.Sprintf("On error: %s", c.OnError)))
 			}
 			if c.OnFault != "" {
-				fmt.Fprintf(globals.Stderr, "On fault: %s\n", c.OnFault)
+				fmt.Fprintf(globals.Stderr, "%s\n", watchWarnStyle.Render(fmt.Sprintf("On fault: %s", c.OnFault)))
 			}
 			for _, t := range triggers {
 				fmt.Fprintf(globals.Stderr, "On pattern '%s': %s\n", t.pattern.String(), t.command)
@@ -284,7 +292,7 @@ func (c *WatchCmd) Run(globals *Globals) error {
 				return err
 			}
 
-			now := time.Now()
+			now := clk.Now()
 
 			// Check error trigger
 			if c.OnError != "" && entry.Level == domain.LogLevelError {
