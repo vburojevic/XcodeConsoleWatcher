@@ -45,6 +45,7 @@ type ErrorOutput struct {
 	SchemaVersion int    `json:"schemaVersion"` // Schema version for compatibility
 	Code          string `json:"code"`          // Machine-readable error code
 	Message       string `json:"message"`       // Human-readable message
+	Hint          string `json:"hint,omitempty"`// Optional recovery hint
 }
 
 // NewErrorOutput creates a new error output

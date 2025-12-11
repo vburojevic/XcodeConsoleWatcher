@@ -3,6 +3,7 @@ package filter
 import (
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -559,5 +560,19 @@ func TestDedupeFilter(t *testing.T) {
 		pending := f.GetPendingDuplicates()
 		assert.Len(t, pending, 1)
 		assert.Equal(t, 3, pending["test message"].count)
+	})
+
+	t.Run("windowed duplicates suppressed within window", func(t *testing.T) {
+		f := NewDedupeFilter(5 * time.Second)
+		entry1 := &domain.LogEntry{Message: "repeat", Timestamp: time.Unix(0, 0)}
+		entry2 := &domain.LogEntry{Message: "repeat", Timestamp: time.Unix(3, 0)}
+		entry3 := &domain.LogEntry{Message: "repeat", Timestamp: time.Unix(10, 0)}
+
+		res1 := f.Check(entry1)
+		assert.True(t, res1.ShouldEmit)
+		res2 := f.Check(entry2)
+		assert.False(t, res2.ShouldEmit)
+		res3 := f.Check(entry3)
+		assert.True(t, res3.ShouldEmit)
 	})
 }

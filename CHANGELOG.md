@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.13.0] - 2025-12-11
+## [0.13.1] - 2025-12-11
 
 ### Added
 - Generated machine-readable help (`docs/help.json`) and schema (`schemas/generated.schema.json`) to keep docs in sync.
@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session debug NDJSON event (verbose) and structured errors now include optional hints.
 - Filter pipeline reused, tail flags grouped, flag doctor helper, heartbeat pool allocation reduction.
 
-## [0.12.0] - 2025-12-11
+## [0.13.0] - 2025-12-11
 
 ### Added
 - Filter pipeline abstraction (`internal/filter/pipeline.go`) and adoption in tail for extensible predicate chaining (pattern/exclude/where).

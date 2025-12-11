@@ -40,3 +40,4 @@ func (e *Emitter) Cutoff(reason, tailID string, session, total int) error {
 func (e *Emitter) WriteReconnect(msg, tailID, severity string) error {
 	return e.w.WriteReconnect(msg, tailID, severity)
 }
+func (e *Emitter) SessionDebug(sd *SessionDebugOutput) error { return e.w.WriteSessionDebug(sd) }
