@@ -82,7 +82,8 @@ run-tail: build
 
 ## release: Build release with goreleaser
 release:
-	@echo "Release disabled (requires GITHUB_TOKEN). Use 'make release-snapshot' locally or run goreleaser with a token when publishing."
+	@echo "Building release with goreleaser..."
+	goreleaser release --clean
 
 ## release-snapshot: Build snapshot release
 release-snapshot:
