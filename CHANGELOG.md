@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4] - 2025-12-11
+
+### Changed
+- Launch command now uses shared error emitter; minor struct tag cleanup.
+- Examples JSON schema fields aligned for agents.
+
 ## [0.11.3] - 2025-12-11
 
 ### Added

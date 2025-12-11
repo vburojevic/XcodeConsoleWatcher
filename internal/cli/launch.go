@@ -18,11 +18,11 @@ import (
 
 // LaunchCmd launches an app and captures stdout/stderr (including print statements)
 type LaunchCmd struct {
-	Simulator          string `short:"s" help:"Simulator name or UDID"`
-	Booted             bool   `short:"b" help:"Use booted simulator (error if multiple)"`
-	App                string `short:"a" required:"" help:"App bundle identifier to launch"`
-	TerminateExisting  bool   `help:"Terminate any running instance of the app first"`
-	Wait               bool   `short:"w" help:"Wait for debugger to attach before launching"`
+	Simulator         string `short:"s" help:"Simulator name or UDID"`
+	Booted            bool   `short:"b" help:"Use booted simulator (error if multiple)"`
+	App               string `short:"a" required:"" help:"App bundle identifier to launch"`
+	TerminateExisting bool   `help:"Terminate any running instance of the app first"`
+	Wait              bool   `short:"w" help:"Wait for debugger to attach before launching"`
 }
 
 // ConsoleOutput represents a line of console output
@@ -179,12 +179,5 @@ func (c *LaunchCmd) outputConsoleLine(globals *Globals, stream, message, process
 }
 
 func (c *LaunchCmd) outputError(globals *Globals, code, message string) error {
-	if globals.Format == "ndjson" {
-		errOut := domain.NewErrorOutput(code, message)
-		data, _ := json.Marshal(errOut)
-		fmt.Fprintln(globals.Stdout, string(data))
-	} else {
-		fmt.Fprintf(globals.Stderr, "Error: %s\n", message)
-	}
-	return fmt.Errorf("%s: %s", code, message)
+	return outputErrorCommon(globals, code, message)
 }

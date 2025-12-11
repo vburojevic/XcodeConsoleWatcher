@@ -29,10 +29,10 @@ type CommandExamples struct {
 
 // AllExamples contains examples for all commands
 type AllExamples struct {
-	Type      string             `json:"type"`
-	Version   string             `json:"version"`
-	Commands  []CommandExamples  `json:"commands"`
-	Workflows []WorkflowExample  `json:"workflows"`
+	Type      string            `json:"type"`
+	Version   string            `json:"version"`
+	Commands  []CommandExamples `json:"commands"`
+	Workflows []WorkflowExample `json:"workflows"`
 }
 
 // WorkflowExample shows a multi-step workflow
