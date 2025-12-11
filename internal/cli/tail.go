@@ -603,7 +603,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 			if !globals.Quiet {
 				if strings.HasPrefix(err.Error(), "reconnect_notice:") {
 					if emitter != nil {
-						emitter.WriteReconnect(err.Error(), tailID)
+						emitter.WriteReconnect(err.Error(), tailID, "info")
 					} else {
 						fmt.Fprintf(globals.Stderr, "%s\n", err.Error())
 					}

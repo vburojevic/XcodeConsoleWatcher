@@ -37,4 +37,6 @@ func (e *Emitter) Metadata(version, commit, buildDate string) error {
 func (e *Emitter) Cutoff(reason, tailID string, session, total int) error {
 	return e.w.WriteCutoff(reason, tailID, session, total)
 }
-func (e *Emitter) WriteReconnect(msg, tailID string) error { return e.w.WriteReconnect(msg, tailID) }
+func (e *Emitter) WriteReconnect(msg, tailID, severity string) error {
+	return e.w.WriteReconnect(msg, tailID, severity)
+}

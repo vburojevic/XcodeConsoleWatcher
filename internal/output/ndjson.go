@@ -94,6 +94,7 @@ type ReconnectNotice struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	Message       string `json:"message"`
 	TailID        string `json:"tail_id,omitempty"`
+	Severity      string `json:"severity,omitempty"`
 }
 
 // TmuxOutput represents tmux session information
@@ -253,12 +254,13 @@ func (w *NDJSONWriter) WriteCutoff(reason, tailID string, session, total int) er
 }
 
 // WriteReconnect outputs a reconnect notice
-func (w *NDJSONWriter) WriteReconnect(message, tailID string) error {
+func (w *NDJSONWriter) WriteReconnect(message, tailID, severity string) error {
 	return w.encoder.Encode(&ReconnectNotice{
 		Type:          "reconnect_notice",
 		SchemaVersion: SchemaVersion,
 		Message:       message,
 		TailID:        tailID,
+		Severity:      severity,
 	})
 }
 
