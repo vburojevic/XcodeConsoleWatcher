@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -246,31 +245,13 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 	}
 
-	// Compile pattern regex if provided
-	var pattern *regexp.Regexp
-	if c.Pattern != "" {
-		var err error
-		pattern, err = regexp.Compile(c.Pattern)
-		if err != nil {
-			return c.outputError(globals, "INVALID_PATTERN", fmt.Sprintf("invalid regex pattern: %s", err))
-		}
-	}
-
-	// Compile exclude pattern regexes if provided
-	var excludePatterns []*regexp.Regexp
-	for _, excl := range c.Exclude {
-		re, err := regexp.Compile(excl)
-		if err != nil {
-			return c.outputError(globals, "INVALID_EXCLUDE_PATTERN", fmt.Sprintf("invalid exclude regex pattern '%s': %s", excl, err))
-		}
-		excludePatterns = append(excludePatterns, re)
+	pattern, excludePatterns, whereFilter, err := buildFilters(c.Pattern, c.Exclude, c.Where)
+	if err != nil {
+		return c.outputError(globals, "INVALID_FILTER", err.Error())
 	}
 
 	// Determine log level (command-specific overrides global)
-	minLevel := globals.Level
-	if c.MinLevel != "" {
-		minLevel = c.MinLevel
-	}
+	minLevel, maxLevel := resolveLevels(c.MinLevel, c.MaxLevel, globals.Level)
 
 	// Create streamer
 	streamer := simulator.NewStreamer(mgr)
@@ -279,8 +260,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 		Subsystems:        c.Subsystem,
 		Categories:        c.Category,
 		Processes:         c.Process,
-		MinLevel:          domain.ParseLogLevel(minLevel),
-		MaxLevel:          domain.ParseLogLevel(c.MaxLevel),
+		MinLevel:          minLevel,
+		MaxLevel:          maxLevel,
 		Pattern:           pattern,
 		ExcludePatterns:   excludePatterns,
 		ExcludeSubsystems: c.ExcludeSubsystem,
@@ -427,17 +408,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 			}
 		}
 		dedupeFilter = filter.NewDedupeFilter(dedupeWindow)
-	}
-
-	// Setup where filter if provided
-	var whereFilter *filter.WhereFilter
-	if len(c.Where) > 0 {
-		var err error
-		whereFilter, err = filter.NewWhereFilter(c.Where)
-		if err != nil {
-			return c.outputError(globals, "INVALID_WHERE", err.Error())
-		}
-		globals.Debug("Where filter: %d clauses", len(c.Where))
 	}
 
 	emitHints := func() {
