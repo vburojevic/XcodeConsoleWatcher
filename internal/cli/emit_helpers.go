@@ -22,8 +22,8 @@ func emitWarning(globals *Globals, emitter *output.Emitter, msg string) {
 func emitError(globals *Globals, emitter *output.Emitter, code, msg string) error {
 	if globals.Format == "ndjson" && emitter != nil {
 		emitter.Error(code, msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 	fmt.Fprintf(globals.Stderr, "Error [%s]: %s\n", code, msg)
-	return fmt.Errorf(msg)
+	return fmt.Errorf("%s", msg)
 }

@@ -591,14 +591,14 @@ func (c *TailCmd) Run(globals *Globals) error {
 
 		case err := <-streamer.Errors():
 			if !globals.Quiet {
-				if emitter != nil {
-					if strings.HasPrefix(err.Error(), "reconnect_notice:") {
+				if strings.HasPrefix(err.Error(), "reconnect_notice:") {
+					if emitter != nil {
 						emitter.WriteReconnect(err.Error(), tailID)
 					} else {
-						emitter.WriteWarning(err.Error())
+						fmt.Fprintf(globals.Stderr, "%s\n", err.Error())
 					}
 				} else {
-					fmt.Fprintf(globals.Stderr, "Warning: %s\n", err.Error())
+					emitWarning(globals, emitter, err.Error())
 				}
 			}
 
