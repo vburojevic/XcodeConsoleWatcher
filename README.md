@@ -30,6 +30,7 @@ That's it. This streams logs from your app in real-time.
 * **Automatic session tracking** – detects app relaunches and emits `session_start`/`session_end` events so AI agents know when the app restarted.
 * **Tail-scoped IDs** – every event carries a `tail_id`, so agents can correlate only the events from the current tail invocation.
 * **Per-run file rotation** – when recording to disk, each app relaunch (or idle rollover) writes to a new file for clean ingestion.
+* **Agent-ready output** – `agent_hints`, `metadata`, `reconnect_notice`, `clear_buffer`, `cutoff_reached`, `heartbeat` with `last_seen_timestamp`, and a machine-friendly preset.
 * **Historical queries** – query past logs with `xcw query` using relative durations such as `--since 5m`.
 * **Smart filtering** – filter by app bundle ID, log level, regex patterns, field values (`--where`), or exclude noise.
 * **Log discovery** – use `xcw discover` to understand what subsystems, categories, and processes exist before filtering.
@@ -131,6 +132,12 @@ xcw tail -s "iPhone 17 Pro" -a com.example.myapp
 
 # force a new session if no logs arrive for 60s
 xcw tail -s "iPhone 17 Pro" -a com.example.myapp --session-idle 60s
+
+# machine-friendly preset for agents
+xcw --machine-friendly tail -s "iPhone 17 Pro" -a com.example.myapp
+
+# dry-run to see the resolved options as JSON (no streaming)
+xcw tail -s "iPhone 17 Pro" -a com.example.myapp --dry-run-json
 
 # filter logs by regex (--filter or --pattern or -p)
 xcw tail -a com.example.myapp --filter "error|warning"
@@ -404,6 +411,8 @@ This allows AI agents to keep `xcw tail` running continuously while you rebuild 
 3. On `session_start`, `session_end`, or `clear_buffer`, reset any caches (dedupe/pattern memory) before continuing.
 4. When recording to disk, read only the newest rotated file unless explicitly comparing runs.
 5. Use older sessions/files only when you are asked to compare behavior across runs.
+6. Watch for `reconnect_notice` to mark possible log gaps; watch `cutoff_reached` to know the stream ended intentionally.
+7. Use `metadata` at startup for version/commit info; `heartbeat.last_seen_timestamp` to detect stalls.
 
 ## Output format & JSON schema
 

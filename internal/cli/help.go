@@ -22,6 +22,7 @@ type HelpOutput struct {
 	OutputTypes    map[string]OutputTypeDoc `json:"output_types"`
 	ErrorCodes     map[string]ErrorCodeDoc  `json:"error_codes"`
 	Workflows      []WorkflowDoc            `json:"workflows"`
+	Contract       []string                 `json:"contract"`
 }
 
 // CommandDoc documents a single command
@@ -92,12 +93,14 @@ func buildDocumentation() *HelpOutput {
 			"list_simulators":      `xcw list`,
 			"list_apps":            `xcw apps -s "iPhone 17 Pro"`,
 			"stream_logs":          `xcw tail -s "iPhone 17 Pro" -a com.example.myapp`,
+			"machine_friendly":     `xcw --machine-friendly tail -s "iPhone 17 Pro" -a com.example.myapp`,
 			"filter_by_field":      `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --where level=error`,
 			"discover_log_sources": `xcw discover -s "iPhone 17 Pro" -a com.example.myapp --since 5m`,
 			"record_to_file":       `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --session-dir ~/.xcw/sessions`,
 			"analyze_session":      `xcw analyze $(xcw sessions show --latest)`,
 			"check_setup":          `xcw doctor`,
 		},
+		Contract: defaultHints(),
 		Commands: map[string]CommandDoc{
 			"tail": {
 				Description: "Stream real-time logs from iOS Simulator",
@@ -242,6 +245,39 @@ func buildDocumentation() *HelpOutput {
 					"session":       1,
 				},
 				When: "Each log entry during tail or query",
+			},
+			"metadata": {
+				Description: "Tool metadata emitted at start of tail for agents.",
+				Example: map[string]interface{}{
+					"type":             "metadata",
+					"schemaVersion":    1,
+					"version":          "0.10.0",
+					"commit":           "none",
+					"contract_version": 1,
+				},
+				When: "At tail start",
+			},
+			"cutoff_reached": {
+				Description: "Emitted when max-duration or max-logs cutoff stops streaming.",
+				Example: map[string]interface{}{
+					"type":          "cutoff_reached",
+					"schemaVersion": 1,
+					"reason":        "max_duration",
+					"tail_id":       "tail-abc",
+					"session":       2,
+					"total_logs":    500,
+				},
+				When: "When cutoff thresholds are hit",
+			},
+			"reconnect_notice": {
+				Description: "Signals that the log stream reconnected; agents should consider potential gaps.",
+				Example: map[string]interface{}{
+					"type":          "reconnect_notice",
+					"schemaVersion": 1,
+					"message":       "reconnect_notice: reconnecting log stream",
+					"tail_id":       "tail-abc",
+				},
+				When: "After reconnect attempts",
 			},
 			"session_start": {
 				Description: "Emitted when a new app session begins. When alert='APP_RELAUNCHED', the app was relaunched (PID changed). AI agents should watch for this to know logs are from a fresh app instance.",
