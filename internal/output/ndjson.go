@@ -99,6 +99,19 @@ type ReconnectNotice struct {
 	Severity      string `json:"severity,omitempty"`
 }
 
+// SessionDebugOutput surfaces verbose session transition info
+type SessionDebugOutput struct {
+	Type          string                 `json:"type"` // Always "session_debug"
+	SchemaVersion int                    `json:"schemaVersion"`
+	TailID        string                 `json:"tail_id,omitempty"`
+	Session       int                    `json:"session"`
+	PrevSession   int                    `json:"prev_session,omitempty"`
+	PID           int                    `json:"pid"`
+	PrevPID       int                    `json:"prev_pid,omitempty"`
+	Reason        string                 `json:"reason"`
+	Summary       map[string]interface{} `json:"summary,omitempty"`
+}
+
 // TmuxOutput represents tmux session information
 type TmuxOutput struct {
 	Type          string `json:"type"` // Always "tmux"
@@ -193,8 +206,11 @@ func (w *NDJSONWriter) WriteSummary(summary *domain.LogSummary) error {
 }
 
 // WriteError outputs an error
-func (w *NDJSONWriter) WriteError(code, message string) error {
+func (w *NDJSONWriter) WriteError(code, message string, hint ...string) error {
 	err := domain.NewErrorOutput(code, message)
+	if len(hint) > 0 {
+		err.Hint = hint[0]
+	}
 	err.SchemaVersion = SchemaVersion
 	return w.encoder.Encode(err)
 }
@@ -264,6 +280,12 @@ func (w *NDJSONWriter) WriteReconnect(message, tailID, severity string) error {
 		TailID:        tailID,
 		Severity:      severity,
 	})
+}
+
+// WriteSessionDebug outputs a verbose session transition for diagnostics
+func (w *NDJSONWriter) WriteSessionDebug(sd *SessionDebugOutput) error {
+	sd.SchemaVersion = SchemaVersion
+	return w.encoder.Encode(sd)
 }
 
 // WriteTmux outputs tmux session information

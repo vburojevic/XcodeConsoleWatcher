@@ -170,6 +170,10 @@
           ],
           "type": "string"
         },
+        "hint": {
+          "description": "Optional recovery hint for agents",
+          "type": "string"
+        },
         "message": {
           "description": "Human-readable error description",
           "type": "string"
@@ -408,6 +412,57 @@
         "size"
       ],
       "title": "Session File",
+      "type": "object"
+    },
+    "session_debug": {
+      "description": "Verbose session transition event for diagnostics",
+      "properties": {
+        "pid": {
+          "description": "Current PID",
+          "type": "integer"
+        },
+        "prev_pid": {
+          "description": "Previous PID",
+          "type": "integer"
+        },
+        "prev_session": {
+          "description": "Previous session number",
+          "type": "integer"
+        },
+        "reason": {
+          "description": "Reason for transition (relaunch, idle_timeout)",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": 1,
+          "description": "Schema version for compatibility detection",
+          "type": "integer"
+        },
+        "session": {
+          "description": "Current session number",
+          "type": "integer"
+        },
+        "summary": {
+          "description": "Previous session summary snapshot",
+          "type": "object"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "type": {
+          "const": "session_debug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "schemaVersion",
+        "session",
+        "pid",
+        "reason"
+      ],
+      "title": "Session Debug",
       "type": "object"
     },
     "summary": {

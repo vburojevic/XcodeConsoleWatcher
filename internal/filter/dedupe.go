@@ -10,7 +10,7 @@ import (
 // DedupeFilter collapses repeated identical messages
 type DedupeFilter struct {
 	mu           sync.Mutex
-	window       time.Duration   // Time window for deduplication (0 = consecutive only)
+	window       time.Duration // Time window for deduplication (0 = consecutive only)
 	seen         map[string]*dedupeEntry
 	lastMessage  string
 	lastEmitTime time.Time
@@ -34,10 +34,10 @@ func NewDedupeFilter(window time.Duration) *DedupeFilter {
 
 // DedupeResult holds the result of a dedupe check
 type DedupeResult struct {
-	ShouldEmit  bool      // Whether this entry should be emitted
-	Count       int       // Number of duplicates (1 = first occurrence)
-	FirstSeen   time.Time // First occurrence timestamp
-	LastSeen    time.Time // Last occurrence timestamp (same as FirstSeen if count=1)
+	ShouldEmit bool      // Whether this entry should be emitted
+	Count      int       // Number of duplicates (1 = first occurrence)
+	FirstSeen  time.Time // First occurrence timestamp
+	LastSeen   time.Time // Last occurrence timestamp (same as FirstSeen if count=1)
 }
 
 // Check determines if a log entry should be emitted or suppressed
@@ -47,6 +47,9 @@ func (f *DedupeFilter) Check(entry *domain.LogEntry) DedupeResult {
 
 	key := entry.Message
 	now := time.Now()
+	if !entry.Timestamp.IsZero() {
+		now = entry.Timestamp
+	}
 
 	// Clean up old entries if using window mode
 	if f.window > 0 {

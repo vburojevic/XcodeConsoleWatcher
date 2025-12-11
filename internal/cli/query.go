@@ -75,10 +75,11 @@ func (c *QueryCmd) Run(globals *Globals) error {
 	}
 
 	// Compile filters (pattern, exclude, where)
-	pattern, excludePatterns, whereFilter, err := buildFilters(c.Pattern, c.Exclude, c.Where)
+	pattern, excludePatterns, _, err := buildFilters(c.Pattern, c.Exclude, c.Where)
 	if err != nil {
 		return c.outputError(globals, "INVALID_FILTER", err.Error())
 	}
+	pipeline, _ := buildPipeline(c.Pattern, c.Exclude, c.Where)
 
 	// Output query info if not quiet
 	if !globals.Quiet {
@@ -123,17 +124,16 @@ func (c *QueryCmd) Run(globals *Globals) error {
 	}
 	globals.Debug("Query returned %d entries", len(entries))
 
-	// Apply where filter if provided
-	if whereFilter != nil {
-		globals.Debug("Where filter: %d clauses", len(c.Where))
-
+	// Apply pipeline filter if provided (defensive; streamer already filters)
+	if pipeline != nil {
+		globals.Debug("Pipeline filter: pattern/exclude=%d where=%d", len(c.Exclude), len(c.Where))
 		var filtered []domain.LogEntry
 		for _, entry := range entries {
-			if whereFilter.Match(&entry) {
+			if pipeline.Match(&entry) {
 				filtered = append(filtered, entry)
 			}
 		}
-		globals.Debug("After where filter: %d entries (was %d)", len(filtered), len(entries))
+		globals.Debug("After pipeline filter: %d entries (was %d)", len(filtered), len(entries))
 		entries = filtered
 	}
 

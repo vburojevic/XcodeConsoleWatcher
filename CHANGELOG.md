@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.12.1] - 2025-12-11
+## [0.13.0] - 2025-12-11
 
 ### Added
 - Generated machine-readable help (`docs/help.json`) and schema (`schemas/generated.schema.json`) to keep docs in sync.
-- Added tests covering filter pipeline, tail flag parsing, and session tracker binary UUID detection.
+- Added tests covering filter pipeline, tail flag parsing, session tracker binary UUID detection, help/schema drift, and dedupe windowing.
+- Session debug NDJSON event (verbose) and structured errors now include optional hints.
+- Filter pipeline reused, tail flags grouped, flag doctor helper, heartbeat pool allocation reduction.
 
 ## [0.12.0] - 2025-12-11
 

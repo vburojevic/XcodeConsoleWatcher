@@ -96,8 +96,8 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	if c.Simulator != "" && c.Booted {
 		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
 	}
-	if globals.Format == "text" && globals.Quiet {
-		return c.outputError(globals, "INVALID_FLAGS", "--quiet is intended for ndjson output; use ndjson for agent consumption")
+	if err := validateFlags(globals, false, false); err != nil {
+		return err
 	}
 
 	// Find the simulator
@@ -223,6 +223,10 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	if c.Exclude != "" {
 		excludeList = append(excludeList, c.Exclude)
 	}
+	pipeline, err := buildPipeline(c.Pattern, excludeList, nil)
+	if err != nil {
+		return c.outputError(globals, "INVALID_FILTER", err.Error())
+	}
 	pattern, excludePatterns, _, err := buildFilters(c.Pattern, excludeList, nil)
 	if err != nil {
 		return c.outputError(globals, "INVALID_FILTER", err.Error())
@@ -272,6 +276,9 @@ func (c *WatchCmd) Run(globals *Globals) error {
 			return nil
 
 		case entry := <-streamer.Logs():
+			if pipeline != nil && !pipeline.Match(&entry) {
+				continue
+			}
 			// Output the log entry
 			if err := writer.Write(&entry); err != nil {
 				return err

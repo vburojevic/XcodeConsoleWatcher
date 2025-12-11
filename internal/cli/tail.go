@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -60,14 +61,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 	if c.Simulator != "" && c.Booted {
 		return c.outputError(globals, "INVALID_FLAGS", "--simulator and --booted are mutually exclusive")
 	}
-	if c.DryRunJSON && c.Tmux {
-		return c.outputError(globals, "INVALID_FLAGS", "--dry-run-json cannot be combined with --tmux")
-	}
-	if c.DryRunJSON && globals.Format != "ndjson" {
-		return c.outputError(globals, "INVALID_FLAGS", "--dry-run-json requires ndjson output")
-	}
-	if globals.Format == "text" && globals.Quiet {
-		return c.outputError(globals, "INVALID_FLAGS", "--quiet has no effect with text output; use ndjson for agents")
+	if err := validateFlags(globals, c.DryRunJSON, c.Tmux); err != nil {
+		return err
 	}
 	if globals.Format == "text" && globals.Config != nil && globals.Config.Quiet && !c.NoAgentHints && globals.Config.Format == "ndjson" {
 		// no-op, just clarity
@@ -450,6 +445,22 @@ func (c *TailCmd) Run(globals *Globals) error {
 						log.Debug("session ended -> %d", sessionChange.EndSession.Session)
 					}
 				}
+				if emitter != nil && globals.Verbose && sessionChange.EndSession != nil && sessionChange.StartSession != nil {
+					emitter.SessionDebug(&output.SessionDebugOutput{
+						Type:        "session_debug",
+						TailID:      tailID,
+						Session:     sessionChange.StartSession.Session,
+						PrevSession: sessionChange.EndSession.Session,
+						PID:         sessionChange.StartSession.PID,
+						PrevPID:     sessionChange.EndSession.PID,
+						Reason:      "relaunch",
+						Summary: map[string]interface{}{
+							"total_logs": sessionChange.EndSession.Summary.TotalLogs,
+							"errors":     sessionChange.EndSession.Summary.Errors,
+							"faults":     sessionChange.EndSession.Summary.Faults,
+						},
+					})
+				}
 				// Session changed - emit events
 				if sessionChange.EndSession != nil {
 					// Output session end with summary
@@ -600,7 +611,8 @@ func (c *TailCmd) Run(globals *Globals) error {
 				return nil
 			}
 
-			heartbeat := &output.Heartbeat{
+			heartbeat := heartbeatPool.Get().(*output.Heartbeat)
+			*heartbeat = output.Heartbeat{
 				Type:              "heartbeat",
 				SchemaVersion:     output.SchemaVersion,
 				Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
@@ -615,6 +627,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 				log.Debug("heartbeat logs_since_last=%d latest_session=%d", logsSinceLast, heartbeat.LatestSession)
 			}
 			logsSinceLast = 0
+			heartbeatPool.Put(heartbeat)
 
 		case <-func() <-chan time.Time {
 			if idleTimer != nil {
@@ -627,6 +640,22 @@ func (c *TailCmd) Run(globals *Globals) error {
 				if sessionChange := sessionTracker.ForceRollover("IDLE_TIMEOUT"); sessionChange != nil {
 					if log != nil {
 						log.Debug("idle rollover -> %d (pid=%d)", sessionChange.StartSession.Session, sessionChange.StartSession.PID)
+					}
+					if emitter != nil && globals.Verbose && sessionChange.EndSession != nil && sessionChange.StartSession != nil {
+						emitter.SessionDebug(&output.SessionDebugOutput{
+							Type:        "session_debug",
+							TailID:      tailID,
+							Session:     sessionChange.StartSession.Session,
+							PrevSession: sessionChange.EndSession.Session,
+							PID:         sessionChange.StartSession.PID,
+							PrevPID:     sessionChange.EndSession.PID,
+							Reason:      "idle_timeout",
+							Summary: map[string]interface{}{
+								"total_logs": sessionChange.EndSession.Summary.TotalLogs,
+								"errors":     sessionChange.EndSession.Summary.Errors,
+								"faults":     sessionChange.EndSession.Summary.Faults,
+							},
+						})
 					}
 					if sessionChange.EndSession != nil && emitter != nil {
 						emitter.SessionEnd(sessionChange.EndSession)
@@ -694,6 +723,8 @@ func generateTailID() string {
 	}
 	return fmt.Sprintf("tail-%s-%d", hex.EncodeToString(b[:]), time.Now().UnixNano())
 }
+
+var heartbeatPool = sync.Pool{New: func() interface{} { return &output.Heartbeat{} }}
 
 func defaultHints() []string {
 	return []string{

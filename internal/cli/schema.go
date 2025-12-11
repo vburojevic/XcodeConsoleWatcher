@@ -32,25 +32,26 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 	}
 
 	schemas := map[string]interface{}{
-		"log":       logSchema(),
-		"summary":   summarySchema(),
-		"heartbeat": heartbeatSchema(),
-		"error":     errorSchema(),
-		"tmux":      tmuxSchema(),
-		"info":      infoSchema(),
-		"warning":   warningSchema(),
-		"trigger":   triggerSchema(),
-		"doctor":    doctorSchema(),
-		"app":       appSchema(),
-		"pick":      pickSchema(),
-		"update":    updateSchema(),
-		"session":   sessionSchema(),
+		"log":           logSchema(),
+		"summary":       summarySchema(),
+		"heartbeat":     heartbeatSchema(),
+		"error":         errorSchema(),
+		"tmux":          tmuxSchema(),
+		"info":          infoSchema(),
+		"warning":       warningSchema(),
+		"trigger":       triggerSchema(),
+		"doctor":        doctorSchema(),
+		"app":           appSchema(),
+		"pick":          pickSchema(),
+		"update":        updateSchema(),
+		"session":       sessionSchema(),
+		"session_debug": sessionDebugSchema(),
 	}
 
 	// Determine which schemas to output
 	typesToOutput := c.Type
 	if len(typesToOutput) == 0 {
-		typesToOutput = []string{"log", "summary", "heartbeat", "error", "tmux", "info", "warning", "trigger", "doctor", "app", "pick", "update", "session"}
+		typesToOutput = []string{"log", "summary", "heartbeat", "error", "tmux", "info", "warning", "trigger", "doctor", "app", "pick", "update", "session", "session_debug"}
 	}
 
 	// Build output
@@ -277,6 +278,10 @@ func errorSchema() map[string]interface{} {
 			"message": map[string]interface{}{
 				"type":        "string",
 				"description": "Human-readable error description",
+			},
+			"hint": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional recovery hint for agents",
 			},
 		},
 		"required": []string{"type", "schemaVersion", "code", "message"},
@@ -591,6 +596,50 @@ func sessionSchema() map[string]interface{} {
 	}
 }
 
+func sessionDebugSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "object",
+		"title":       "Session Debug",
+		"description": "Verbose session transition event for diagnostics",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":  "string",
+				"const": "session_debug",
+			},
+			"schemaVersion": schemaVersionProperty(),
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Current session number",
+			},
+			"prev_session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Previous session number",
+			},
+			"pid": map[string]interface{}{
+				"type":        "integer",
+				"description": "Current PID",
+			},
+			"prev_pid": map[string]interface{}{
+				"type":        "integer",
+				"description": "Previous PID",
+			},
+			"reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Reason for transition (relaunch, idle_timeout)",
+			},
+			"summary": map[string]interface{}{
+				"type":        "object",
+				"description": "Previous session summary snapshot",
+			},
+		},
+		"required": []string{"type", "schemaVersion", "session", "pid", "reason"},
+	}
+}
+
 // Helper to output a quick reference
 func (c *SchemaCmd) outputTextHelp(globals *Globals) {
 	fmt.Fprintln(globals.Stdout, "XcodeConsoleWatcher Output Types:")
@@ -608,6 +657,7 @@ func (c *SchemaCmd) outputTextHelp(globals *Globals) {
 	fmt.Fprintln(globals.Stdout, "  pick      - Interactive selection result")
 	fmt.Fprintln(globals.Stdout, "  update    - Upgrade instructions")
 	fmt.Fprintln(globals.Stdout, "  session   - Session file info")
+	fmt.Fprintln(globals.Stdout, "  session_debug - Verbose session transition info (verbose mode)")
 	fmt.Fprintln(globals.Stdout, "")
 	fmt.Fprintln(globals.Stdout, "Use --type to filter: xcw schema --type log,error")
 }
