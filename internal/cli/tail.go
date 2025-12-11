@@ -51,6 +51,7 @@ type TailCmd struct {
 	DedupeWindow     string   `help:"Time window for deduplication (e.g., '5s', '1m'). Without this, only consecutive duplicates are collapsed"`
 	Where            []string `short:"w" help:"Field filter (e.g., 'level=error', 'message~timeout'). Operators: =, !=, ~, !~, >=, <=, ^, $"`
 	SessionIdle      string   `help:"Emit session boundary after idle period with no logs (e.g., '60s')"`
+	NoAgentHints     bool     `help:"Suppress agent_hints banners (leave off for AI agents)"`
 }
 
 // Run executes the tail command
@@ -314,20 +315,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 	defer streamer.Stop()
 	globals.Debug("Log stream started successfully")
 
-	// Emit ready event when --wait-for-launch is used (signals log capture is active)
-	if c.WaitForLaunch {
-		if globals.Format == "ndjson" {
-			output.NewNDJSONWriter(globals.Stdout).WriteReady(
-				time.Now().Format(time.RFC3339Nano),
-				device.Name,
-				device.UDID,
-				c.App,
-			)
-		} else {
-			fmt.Fprintf(globals.Stderr, "Ready: log capture active for %s\n", c.App)
-		}
-	}
-
 	// Create output writer based on format
 	var writer interface {
 		Write(entry *domain.LogEntry) error
@@ -343,6 +330,32 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 	}
 	setWriter(outputWriter)
+
+	// Create session tracker for detecting app relaunches
+	sessionTracker := session.NewTracker(c.App, device.Name, device.UDID, tailID, appVersion, appBuild)
+	globals.Debug("Session tracking enabled")
+
+	// Emit ready event when --wait-for-launch is used (signals log capture is active)
+	if c.WaitForLaunch {
+		if globals.Format == "ndjson" {
+			output.NewNDJSONWriter(globals.Stdout).WriteReady(
+				time.Now().Format(time.RFC3339Nano),
+				device.Name,
+				device.UDID,
+				c.App,
+				tailID,
+				sessionTracker.CurrentSession(),
+			)
+			if !c.NoAgentHints {
+				output.NewNDJSONWriter(globals.Stdout).WriteAgentHints(tailID, sessionTracker.CurrentSession(), defaultHints())
+			}
+		} else {
+			fmt.Fprintf(globals.Stderr, "Ready: log capture active for %s\n", c.App)
+			if !c.NoAgentHints {
+				fmt.Fprintf(globals.Stderr, "[XCW] agent_hints: follow latest session, match tail_id=%s\n", tailID)
+			}
+		}
+	}
 
 	// Parse summary interval
 	var summaryTicker *time.Ticker
@@ -408,9 +421,17 @@ func (c *TailCmd) Run(globals *Globals) error {
 		globals.Debug("Where filter: %d clauses", len(c.Where))
 	}
 
-	// Create session tracker for detecting app relaunches
-	sessionTracker := session.NewTracker(c.App, device.Name, device.UDID, tailID, appVersion, appBuild)
-	globals.Debug("Session tracking enabled")
+	emitHints := func() {
+		if c.NoAgentHints {
+			return
+		}
+		hints := defaultHints()
+		if globals.Format == "ndjson" {
+			output.NewNDJSONWriter(globals.Stdout).WriteAgentHints(tailID, sessionTracker.CurrentSession(), hints)
+		} else {
+			fmt.Fprintf(globals.Stderr, "[XCW] agent_hints: %s (tail_id=%s, session=%d)\n", strings.Join(hints, "; "), tailID, sessionTracker.CurrentSession())
+		}
+	}
 
 	// Process logs
 	for {
@@ -445,6 +466,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 					if globals.Format == "ndjson" {
 						output.NewNDJSONWriter(outputWriter).WriteSessionEnd(sessionChange.EndSession)
 						output.NewNDJSONWriter(outputWriter).WriteClearBuffer("session_end", tailID, sessionChange.EndSession.Session)
+						emitHints()
 					}
 				}
 
@@ -473,6 +495,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 					if globals.Format == "ndjson" {
 						output.NewNDJSONWriter(outputWriter).WriteSessionStart(sessionChange.StartSession)
 						output.NewNDJSONWriter(outputWriter).WriteClearBuffer("session_start", tailID, sessionChange.StartSession.Session)
+						emitHints()
 					}
 
 					// Write tmux session banner if in tmux mode
@@ -565,6 +588,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 					if sessionChange.EndSession != nil && globals.Format == "ndjson" {
 						output.NewNDJSONWriter(outputWriter).WriteSessionEnd(sessionChange.EndSession)
 						output.NewNDJSONWriter(outputWriter).WriteClearBuffer("session_end", tailID, sessionChange.EndSession.Session)
+						emitHints()
 					}
 					if pathBuilder != nil && sessionChange.StartSession != nil {
 						if err := openOutput(sessionChange.StartSession.Session); err != nil {
@@ -576,6 +600,7 @@ func (c *TailCmd) Run(globals *Globals) error {
 						if globals.Format == "ndjson" {
 							output.NewNDJSONWriter(outputWriter).WriteSessionStart(sessionChange.StartSession)
 							output.NewNDJSONWriter(outputWriter).WriteClearBuffer("session_start", tailID, sessionChange.StartSession.Session)
+							emitHints()
 						}
 						if tmuxMgr != nil {
 							var prevSummary *domain.SessionSummary
@@ -631,4 +656,13 @@ func generateTailID() string {
 		return fmt.Sprintf("tail-%d", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("tail-%s-%d", hex.EncodeToString(b[:]), time.Now().UnixNano())
+}
+
+func defaultHints() []string {
+	return []string{
+		"use latest session only",
+		"match tail_id to current tail invocation",
+		"reset caches on clear_buffer/session_start/session_end",
+		"use newest rotated file unless comparing runs",
+	}
 }

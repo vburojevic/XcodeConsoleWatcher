@@ -39,12 +39,14 @@ type OutputEntry struct {
 
 // Heartbeat is a keepalive message for AI agents
 type Heartbeat struct {
-	Type          string `json:"type"`
-	SchemaVersion int    `json:"schemaVersion"`
-	Timestamp     string `json:"timestamp"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-	LogsSinceLast int    `json:"logs_since_last"`
-	TailID        string `json:"tail_id,omitempty"`
+	Type            string `json:"type"`
+	SchemaVersion   int    `json:"schemaVersion"`
+	Timestamp       string `json:"timestamp"`
+	UptimeSeconds   int64  `json:"uptime_seconds"`
+	LogsSinceLast   int    `json:"logs_since_last"`
+	TailID          string `json:"tail_id,omitempty"`
+	ContractVersion int    `json:"contract_version,omitempty"`
+	LatestSession   int    `json:"latest_session,omitempty"`
 }
 
 // InfoOutput represents an informational message
@@ -92,21 +94,36 @@ type TriggerErrorOutput struct {
 
 // ClearBufferOutput instructs consumers to discard cached state at session boundaries
 type ClearBufferOutput struct {
-	Type          string `json:"type"` // Always "clear_buffer"
-	SchemaVersion int    `json:"schemaVersion"`
-	Reason        string `json:"reason"`
-	TailID        string `json:"tail_id,omitempty"`
-	Session       int    `json:"session,omitempty"`
+	Type          string   `json:"type"` // Always "clear_buffer"
+	SchemaVersion int      `json:"schemaVersion"`
+	Reason        string   `json:"reason"`
+	TailID        string   `json:"tail_id,omitempty"`
+	Session       int      `json:"session,omitempty"`
+	Hints         []string `json:"hints,omitempty"`
 }
 
 // ReadyOutput signals that log capture is active and ready
 type ReadyOutput struct {
-	Type          string `json:"type"` // Always "ready"
-	SchemaVersion int    `json:"schemaVersion"`
-	Timestamp     string `json:"timestamp"`
-	Simulator     string `json:"simulator"`
-	UDID          string `json:"udid"`
-	App           string `json:"app"`
+	Type            string `json:"type"` // Always "ready"
+	SchemaVersion   int    `json:"schemaVersion"`
+	Timestamp       string `json:"timestamp"`
+	Simulator       string `json:"simulator"`
+	UDID            string `json:"udid"`
+	App             string `json:"app"`
+	TailID          string `json:"tail_id,omitempty"`
+	Session         int    `json:"session,omitempty"`
+	ContractVersion int    `json:"contract_version,omitempty"`
+}
+
+// AgentHintsOutput provides runtime contract guidance for AI agents
+type AgentHintsOutput struct {
+	Type             string   `json:"type"` // Always "agent_hints"
+	SchemaVersion    int      `json:"schemaVersion"`
+	TailID           string   `json:"tail_id,omitempty"`
+	Session          int      `json:"session,omitempty"`
+	ContractVersion  int      `json:"contract_version"`
+	Hints            []string `json:"hints"`
+	RecommendedScope string   `json:"recommended_scope,omitempty"`
 }
 
 // Write outputs a single log entry as NDJSON
@@ -214,14 +231,17 @@ func (w *NDJSONWriter) WriteTriggerError(command, errMsg string) error {
 }
 
 // WriteReady outputs a ready signal indicating log capture is active
-func (w *NDJSONWriter) WriteReady(timestamp, simulator, udid, app string) error {
+func (w *NDJSONWriter) WriteReady(timestamp, simulator, udid, app, tailID string, session int) error {
 	return w.encoder.Encode(&ReadyOutput{
-		Type:          "ready",
-		SchemaVersion: SchemaVersion,
-		Timestamp:     timestamp,
-		Simulator:     simulator,
-		UDID:          udid,
-		App:           app,
+		Type:            "ready",
+		SchemaVersion:   SchemaVersion,
+		Timestamp:       timestamp,
+		Simulator:       simulator,
+		UDID:            udid,
+		App:             app,
+		TailID:          tailID,
+		Session:         session,
+		ContractVersion: 1,
 	})
 }
 
@@ -233,6 +253,20 @@ func (w *NDJSONWriter) WriteClearBuffer(reason string, tailID string, session in
 		Reason:        reason,
 		TailID:        tailID,
 		Session:       session,
+		Hints:         []string{"reset caches/state for tail_id", "switch to latest session"},
+	})
+}
+
+// WriteAgentHints outputs guidance for AI agents
+func (w *NDJSONWriter) WriteAgentHints(tailID string, session int, hints []string) error {
+	return w.encoder.Encode(&AgentHintsOutput{
+		Type:             "agent_hints",
+		SchemaVersion:    SchemaVersion,
+		TailID:           tailID,
+		Session:          session,
+		ContractVersion:  1,
+		Hints:            hints,
+		RecommendedScope: "tail_id + latest session only",
 	})
 }
 
