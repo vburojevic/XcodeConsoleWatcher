@@ -236,7 +236,7 @@ xcrun simctl launch booted com.example.myapp
 
 ## Querying historical logs
 
-`xcw query` reads previously recorded logs (from `--output` files or sessions) and applies filters.  Use relative durations (`--since 5m`, `--since 1h`) and optionally request an analysis summary.
+`xcw query` reads previously recorded logs (from `--output` files or sessions) and applies the same pattern/exclude/where filters as `tail` (including min/max level overrides).  Use relative durations (`--since 5m`, `--since 1h`) and optionally request an analysis summary. Invalid filters return structured errors that are easy for AI agents to surface.
 
 ```sh
 # query the last 5 minutes of logs for your app

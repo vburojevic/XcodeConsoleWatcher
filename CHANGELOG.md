@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2025-12-11
+
+### Added
+- Shared filter helpers now power `xcw query` for consistent pattern, exclude, and where clause handling across commands.
+- Unit tests cover filter compilation and level resolution.
+
+### Changed
+- `xcw query` now reports filter errors consistently and honors min/max level overrides using the common resolver.
+- README updated to clarify AI-agent friendly filtering behavior.
+
 ## [0.10.0] - 2025-12-11
 
 ### Added
