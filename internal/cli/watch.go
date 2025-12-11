@@ -15,6 +15,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
 	"github.com/vburojevic/xcw/internal/domain"
 	"github.com/vburojevic/xcw/internal/output"
 	"github.com/vburojevic/xcw/internal/simulator"
@@ -57,10 +58,25 @@ var (
 	watchWarnStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
 )
 
+func maybeNoStyleWatch(globals *Globals) {
+	if globals == nil {
+		return
+	}
+	if globals.Stdout != nil {
+		if f, ok := globals.Stdout.(*os.File); ok {
+			if !isatty.IsTerminal(f.Fd()) {
+				watchInfoStyle = watchInfoStyle.UnsetForeground().UnsetBold()
+				watchWarnStyle = watchWarnStyle.UnsetForeground().UnsetBold()
+			}
+		}
+	}
+}
+
 // Run executes the watch command
 func (c *WatchCmd) Run(globals *Globals) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	maybeNoStyleWatch(globals)
 	clk := clock.New()
 
 	// Handle signals for graceful shutdown

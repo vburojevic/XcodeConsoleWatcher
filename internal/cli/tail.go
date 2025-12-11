@@ -17,6 +17,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
 	"github.com/vburojevic/xcw/internal/domain"
 	"github.com/vburojevic/xcw/internal/filter"
 	"github.com/vburojevic/xcw/internal/output"
@@ -44,6 +45,8 @@ type TailCmd struct {
 
 // Run executes the tail command
 func (c *TailCmd) Run(globals *Globals) error {
+	// Disable styles when stdout is not a TTY
+	maybeNoStyle(globals)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -744,3 +747,18 @@ var (
 	infoStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
 	bannerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("46"))
 )
+
+func maybeNoStyle(globals *Globals) {
+	if globals == nil {
+		return
+	}
+	if globals.Stdout != nil {
+		if f, ok := globals.Stdout.(*os.File); ok {
+			if !isatty.IsTerminal(f.Fd()) {
+				warnStyle = warnStyle.UnsetForeground().UnsetBold()
+				infoStyle = infoStyle.UnsetForeground().UnsetBold()
+				bannerStyle = bannerStyle.UnsetForeground().UnsetBold()
+			}
+		}
+	}
+}
