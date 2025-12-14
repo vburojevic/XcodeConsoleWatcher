@@ -27,7 +27,7 @@ type QueryCmd struct {
 	Category         []string `help:"Filter by category (can be repeated)"`
 	Process          []string `help:"Filter by process name (can be repeated)"`
 	MinLevel         string   `help:"Minimum log level: debug, info, default, error, fault (overrides global --level)"`
-	MaxLevel         string   `help:"Maximum log level: debug, info, default, error, fault"`
+	MaxLevel         string   `help:"Maximum log level: debug, info, default, error, fault (optional; unset = no max)"`
 	Predicate        string   `help:"Raw NSPredicate filter (overrides --app, --subsystem, --category)"`
 	Analyze          bool     `help:"Include AI-friendly analysis summary"`
 	PersistPatterns  bool     `help:"Save detected patterns for future reference (marks new vs known)"`

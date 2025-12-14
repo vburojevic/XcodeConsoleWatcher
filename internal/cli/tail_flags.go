@@ -6,7 +6,7 @@ type TailFilterFlags struct {
 	Exclude          []string `short:"x" help:"Regex pattern to exclude from log messages (can be repeated)"`
 	ExcludeSubsystem []string `help:"Exclude logs from subsystem (can be repeated, supports * wildcard)"`
 	MinLevel         string   `help:"Minimum log level: debug, info, default, error, fault (overrides global --level)"`
-	MaxLevel         string   `help:"Maximum log level: debug, info, default, error, fault"`
+	MaxLevel         string   `help:"Maximum log level: debug, info, default, error, fault (optional; unset = no max)"`
 	Where            []string `short:"w" help:"Field filter expression (supports AND/OR/NOT, parentheses). Operators: =, !=, ~, !~, >=, <=, ^, $. Regex literals: /pattern/i"`
 	Dedupe           bool     `help:"Collapse repeated identical messages"`
 	DedupeWindow     string   `help:"Time window for deduplication (e.g., '5s', '1m'). Without this, only consecutive duplicates are collapsed"`
