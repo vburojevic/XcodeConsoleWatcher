@@ -30,4 +30,3 @@ Thumbs.db
 # Dependency directories
 vendor/
 /.gitattributes
-/.beads
