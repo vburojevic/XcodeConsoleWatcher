@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -158,7 +159,7 @@ func (r *QueryReader) Query(ctx context.Context, udid string, opts QueryOptions)
 	if stdoutErr != nil {
 		return nil, stdoutErr
 	}
-	if stderrErr != nil && cmdCtx.Err() == nil {
+	if stderrErr != nil && cmdCtx.Err() == nil && !errors.Is(stderrErr, os.ErrClosed) {
 		return nil, fmt.Errorf("log show stderr read error: %w", stderrErr)
 	}
 	if cmdCtx.Err() != nil {

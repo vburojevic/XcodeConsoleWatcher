@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -362,7 +363,7 @@ Loop:
 	if stdoutErr != nil {
 		return stdoutErr
 	}
-	if stderrErr != nil && ctx.Err() == nil {
+	if stderrErr != nil && ctx.Err() == nil && !errors.Is(stderrErr, os.ErrClosed) {
 		return fmt.Errorf("log stream stderr read error: %w", stderrErr)
 	}
 	if ctx.Err() != nil {
