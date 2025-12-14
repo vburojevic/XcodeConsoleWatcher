@@ -31,7 +31,7 @@ func parseBenchFile(path string) (map[string]benchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	results := make(map[string]benchResult)
 	sc := bufio.NewScanner(f)

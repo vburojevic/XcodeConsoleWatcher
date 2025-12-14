@@ -604,7 +604,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 			return false, false, err
 		}
 
-		emitted = true
 		logsSinceLast++
 		totalLogs++
 		lastSeen = clk.Now()

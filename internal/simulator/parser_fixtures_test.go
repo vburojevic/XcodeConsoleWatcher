@@ -12,7 +12,7 @@ import (
 func TestParserFixtures(t *testing.T) {
 	f, err := os.Open("testdata/parser_fixtures.ndjson")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	type want struct {
 		level     string
