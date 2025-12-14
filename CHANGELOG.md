@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.4] - 2025-12-15
+
+### Added
+- Test: stubbed `xcrun` integration coverage for `xcw query` to guard against regressions in log-level filtering.
+
+### Changed
+- CLI help now clarifies `--max-level` is optional (unset = no max).
+- CI now installs golangci-lint via `goinstall` to match the repo Go toolchain.
+
 ## [0.19.3] - 2025-12-15
 
 ### Added
