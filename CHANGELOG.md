@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.3] - 2025-12-15
+
 ### Added
 - Test: `xcw tail` integration-style coverage using a stubbed `xcrun` to validate `--max-logs` cutoffs.
 
