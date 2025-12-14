@@ -78,7 +78,7 @@ func main() {
 	} else {
 		globals.ConfigSources = config.ComputeSources(nil, flagsSet)
 	}
-	err = ctx.Run(globals)
+	err = ctx.Run(globals, ctx)
 	if err != nil {
 		os.Exit(1)
 	}

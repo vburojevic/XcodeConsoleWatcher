@@ -68,6 +68,14 @@ func (c *TailCmd) Run(globals *Globals) error {
 	if err := validateAppPredicateAll(c.App, c.Predicate, c.All, len(c.Subsystem) > 0 || len(c.Category) > 0); err != nil {
 		return outputErrorCommon(globals, err.Code, err.Message, err.Hint)
 	}
+	if c.Resume {
+		if globals.Format != "ndjson" {
+			return c.outputError(globals, "INVALID_FLAGS", "--resume requires --format ndjson")
+		}
+		if c.App == "" {
+			return c.outputError(globals, "INVALID_FLAGS", "--resume requires --app (resume state is keyed by bundle id)")
+		}
+	}
 
 	// Find the simulator
 	mgr := simulator.NewManager()
@@ -85,6 +93,23 @@ func (c *TailCmd) Run(globals *Globals) error {
 			globals.Debug("App info: version=%s build=%s", appVersion, appBuild)
 		} else {
 			globals.Debug("App info unavailable: %v", err)
+		}
+	}
+
+	var resumePath string
+	var prevResume *resumeState
+	if c.Resume {
+		var err error
+		resumePath = strings.TrimSpace(c.ResumeState)
+		if resumePath == "" {
+			resumePath, err = defaultResumeStatePath(c.App)
+			if err != nil {
+				return c.outputError(globals, "RESUME_STATE_ERROR", err.Error())
+			}
+		}
+		prevResume, err = loadResumeState(resumePath)
+		if err != nil {
+			return c.outputError(globals, "RESUME_STATE_ERROR", fmt.Sprintf("failed to load resume state: %s", err))
 		}
 	}
 
@@ -290,17 +315,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 		globals.Debug("Exclude subsystems: %v", opts.ExcludeSubsystems)
 	}
 
-	globals.Debug("Starting log stream...")
-	if err := streamer.Start(ctx, device.UDID, opts); err != nil {
-		return c.outputError(globals, "STREAM_FAILED", err.Error(), hintForStreamOrQuery(err))
-	}
-	defer func() {
-		if err := streamer.Stop(); err != nil {
-			globals.Debug("failed to stop streamer: %v", err)
-		}
-	}()
-	globals.Debug("Log stream started successfully")
-
 	// Create output writer based on format
 	var writer interface {
 		Write(entry *domain.LogEntry) error
@@ -338,40 +352,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 	}
 
-	// Emit ready event when --wait-for-launch is used (signals log capture is active)
-	if c.WaitForLaunch {
-		if emitter != nil {
-			if err := emitter.Ready(
-				clk.Now().UTC().Format(time.RFC3339Nano),
-				device.Name,
-				device.UDID,
-				c.App,
-				tailID,
-				sessionTracker.CurrentSession(),
-			); err != nil {
-				return err
-			}
-			if !c.NoAgentHints {
-				if err := emitter.AgentHints(tailID, sessionTracker.CurrentSession(), defaultHintsForTail(c.App != "")); err != nil {
-					return err
-				}
-			}
-		} else {
-			target := c.App
-			if target == "" {
-				target = "all logs"
-			}
-			if _, err := fmt.Fprintf(globals.Stderr, "%s\n", infoStyle.Render(fmt.Sprintf("Ready: log capture active for %s", target))); err != nil {
-				globals.Debug("failed to write ready message: %v", err)
-			}
-			if !c.NoAgentHints {
-				if _, err := fmt.Fprintf(globals.Stderr, "%s\n", warnStyle.Render(fmt.Sprintf("agent_hints: match tail_id=%s", tailID))); err != nil {
-					globals.Debug("failed to write agent_hints message: %v", err)
-				}
-			}
-		}
-	}
-
 	// Parse summary interval
 	var summaryTicker *clock.Ticker
 	if c.SummaryInterval != "" {
@@ -405,11 +385,24 @@ func (c *TailCmd) Run(globals *Globals) error {
 		defer cutoffTimer.Stop()
 	}
 	var maxLogs = c.MaxLogs
+	var resumeMaxGap time.Duration
+	resumeLimit := c.ResumeLimit
+	if c.Resume {
+		d, err := time.ParseDuration(c.ResumeMaxGap)
+		if err != nil {
+			return c.outputError(globals, "INVALID_RESUME_MAX_GAP", fmt.Sprintf("invalid resume max gap duration: %s", err))
+		}
+		resumeMaxGap = d
+		if resumeLimit <= 0 {
+			resumeLimit = 5000
+		}
+	}
 
 	// Track metrics for heartbeat
 	startTime := clk.Now()
 	logsSinceLast := 0
 	lastSeen := clk.Now()
+	lastLogTimestamp := time.Time{}
 	totalLogs := 0
 
 	// Parse idle timeout for session rollover
@@ -475,6 +468,373 @@ func (c *TailCmd) Run(globals *Globals) error {
 		})
 	}
 
+	lastBackfillTo := time.Time{}
+
+	handleEntry := func(entry *domain.LogEntry, resetIdle bool) (stop bool, emitted bool, err error) {
+		// Reset idle timer on activity (live stream only).
+		if resetIdle && idleTimer != nil {
+			if !idleTimer.Stop() {
+				select {
+				case <-idleTimer.C:
+				default:
+				}
+			}
+			idleTimer.Reset(idleDuration)
+		}
+
+		// Check for session change (app relaunch)
+		if sessionChange := sessionTracker.CheckEntry(entry); sessionChange != nil {
+			if log != nil {
+				if sessionChange.StartSession != nil {
+					log.Debug("session rollover -> %d (pid=%d)", sessionChange.StartSession.Session, sessionChange.StartSession.PID)
+				} else if sessionChange.EndSession != nil {
+					log.Debug("session ended -> %d", sessionChange.EndSession.Session)
+				}
+			}
+			if emitter != nil && globals.Verbose && sessionChange.EndSession != nil && sessionChange.StartSession != nil {
+				if err := emitter.SessionDebug(&output.SessionDebugOutput{
+					Type:        "session_debug",
+					TailID:      tailID,
+					Session:     sessionChange.StartSession.Session,
+					PrevSession: sessionChange.EndSession.Session,
+					PID:         sessionChange.StartSession.PID,
+					PrevPID:     sessionChange.EndSession.PID,
+					Reason:      "relaunch",
+					Summary: map[string]interface{}{
+						"total_logs": sessionChange.EndSession.Summary.TotalLogs,
+						"errors":     sessionChange.EndSession.Summary.Errors,
+						"faults":     sessionChange.EndSession.Summary.Faults,
+					},
+				}); err != nil {
+					return false, false, err
+				}
+			}
+
+			// Session changed - emit events
+			if sessionChange.EndSession != nil {
+				// Output session end with summary
+				if emitter != nil {
+					if err := emitter.SessionEnd(sessionChange.EndSession); err != nil {
+						return false, false, err
+					}
+					if err := emitter.ClearBuffer("session_end", tailID, sessionChange.EndSession.Session); err != nil {
+						return false, false, err
+					}
+					emitHints()
+				}
+			}
+
+			// Rotate file per session when configured
+			if pathBuilder != nil && sessionChange.StartSession != nil {
+				if err := openOutput(sessionChange.StartSession.Session); err != nil {
+					return false, false, err
+				}
+				setWriter(outputWriter)
+			}
+
+			if sessionChange.StartSession != nil {
+				// Output stderr alert for AI agents
+				if sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
+					prevSummary := ""
+					if sessionChange.EndSession != nil {
+						prevSummary = fmt.Sprintf(" - Previous: %d logs, %d errors",
+							sessionChange.EndSession.Summary.TotalLogs,
+							sessionChange.EndSession.Summary.Errors)
+					}
+					msg := fmt.Sprintf("🚀 NEW SESSION: App relaunched (PID: %d)%s",
+						sessionChange.StartSession.PID, prevSummary)
+					if _, err := fmt.Fprintf(globals.Stderr, "%s\n", bannerStyle.Render(msg)); err != nil {
+						globals.Debug("failed to write session banner: %v", err)
+					}
+				}
+
+				// Output JSON session start event
+				if emitter != nil {
+					if err := emitter.SessionStart(sessionChange.StartSession); err != nil {
+						return false, false, err
+					}
+					if err := emitter.ClearBuffer("session_start", tailID, sessionChange.StartSession.Session); err != nil {
+						return false, false, err
+					}
+					emitHints()
+				}
+
+				// Write tmux session banner if in tmux mode
+				if tmuxMgr != nil && sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
+					var prevSummary *domain.SessionSummary
+					if sessionChange.EndSession != nil {
+						prevSummary = &sessionChange.EndSession.Summary
+					}
+					if err := tmuxMgr.WriteSessionBanner(
+						sessionChange.StartSession.Session,
+						c.App,
+						sessionChange.StartSession.PID,
+						prevSummary,
+					); err != nil {
+						globals.Debug("failed to write tmux session banner: %v", err)
+					}
+				}
+			}
+		}
+
+		// Apply where filter if enabled
+		if pipeline != nil && !pipeline.Match(entry) {
+			return false, false, nil
+		}
+
+		// Apply dedupe filter if enabled
+		if dedupeFilter != nil {
+			result := dedupeFilter.Check(entry)
+			if !result.ShouldEmit {
+				return false, false, nil
+			}
+			// Add dedupe metadata to first occurrence
+			if result.Count > 1 {
+				entry.DedupeCount = result.Count
+				entry.DedupeFirst = result.FirstSeen.Format(time.RFC3339)
+				entry.DedupeLast = result.LastSeen.Format(time.RFC3339)
+			}
+		}
+
+		// Set session number on entry
+		entry.Session = sessionTracker.CurrentSession()
+		entry.TailID = tailID
+
+		if err := writer.Write(entry); err != nil {
+			return false, false, err
+		}
+
+		emitted = true
+		logsSinceLast++
+		totalLogs++
+		lastSeen = clk.Now()
+		if !entry.Timestamp.IsZero() {
+			lastLogTimestamp = entry.Timestamp
+		}
+
+		if maxLogs > 0 && totalLogs >= maxLogs {
+			if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
+				if err := emitter.SessionEnd(final); err != nil {
+					return false, true, err
+				}
+				if err := emitter.Cutoff("max_logs", tailID, final.Session, totalLogs); err != nil {
+					return false, true, err
+				}
+				if err := emitter.WriteHeartbeat(&output.Heartbeat{
+					Type:              "heartbeat",
+					SchemaVersion:     output.SchemaVersion,
+					Timestamp:         clk.Now().UTC().Format(time.RFC3339Nano),
+					UptimeSeconds:     int64(clk.Since(startTime).Seconds()),
+					LogsSinceLast:     logsSinceLast,
+					TailID:            tailID,
+					LatestSession:     sessionTracker.CurrentSession(),
+					LastSeenTimestamp: lastSeen.UTC().Format(time.RFC3339Nano),
+				}); err != nil {
+					return false, true, err
+				}
+				if err := emitStats(clk.Now()); err != nil {
+					return false, true, err
+				}
+			}
+			return true, true, nil
+		}
+
+		return false, true, nil
+	}
+
+	backfillGap := func(reason string, from, to time.Time) error {
+		if !c.Resume {
+			return nil
+		}
+		if emitter == nil {
+			return nil
+		}
+		from = from.UTC()
+		to = to.UTC()
+		if from.IsZero() || to.IsZero() {
+			return nil
+		}
+		if !to.After(from) {
+			return nil
+		}
+
+		gap := to.Sub(from)
+		willFill := gap <= resumeMaxGap
+		if !globals.Quiet {
+			msg := &output.GapDetectedOutput{
+				Timestamp:     clk.Now().UTC().Format(time.RFC3339Nano),
+				TailID:        tailID,
+				Session:       sessionTracker.CurrentSession(),
+				FromTimestamp: from.Format(time.RFC3339Nano),
+				ToTimestamp:   to.Format(time.RFC3339Nano),
+				Reason:        reason,
+				WillFill:      willFill,
+			}
+			if !willFill {
+				msg.SkipReason = "max_gap_exceeded"
+			}
+			if err := emitter.GapDetected(msg); err != nil {
+				return err
+			}
+		}
+
+		if !willFill {
+			if to.After(lastBackfillTo) {
+				lastBackfillTo = to
+			}
+			return nil
+		}
+
+		reader := simulator.NewQueryReader()
+		opts := simulator.QueryOptions{
+			BundleID:          c.App,
+			Subsystems:        c.Subsystem,
+			Categories:        c.Category,
+			Processes:         c.Process,
+			MinLevel:          minLevel,
+			MaxLevel:          maxLevel,
+			Pattern:           pattern,
+			ExcludePatterns:   excludePatterns,
+			ExcludeSubsystems: c.ExcludeSubsystem,
+			Since:             gap,
+			Until:             to,
+			Limit:             resumeLimit,
+			RawPredicate:      c.Predicate,
+		}
+		if globals.Verbose {
+			opts.OnStderrLine = func(line string) {
+				emitWarning(globals, emitter, "xcrun_stderr: "+line)
+			}
+		}
+
+		entries, err := reader.Query(ctx, device.UDID, opts)
+		if err != nil {
+			return err
+		}
+
+		filled := 0
+		for i := range entries {
+			e := entries[i]
+			if !e.Timestamp.After(from) || e.Timestamp.After(to) {
+				continue
+			}
+			stop, emitted, err := handleEntry(&e, false)
+			if err != nil {
+				return err
+			}
+			if emitted {
+				filled++
+			}
+			if stop {
+				break
+			}
+		}
+
+		if to.After(lastBackfillTo) {
+			lastBackfillTo = to
+		}
+		if !globals.Quiet {
+			if err := emitter.GapFilled(&output.GapFilledOutput{
+				Timestamp:     clk.Now().UTC().Format(time.RFC3339Nano),
+				TailID:        tailID,
+				Session:       sessionTracker.CurrentSession(),
+				FromTimestamp: from.Format(time.RFC3339Nano),
+				ToTimestamp:   to.Format(time.RFC3339Nano),
+				Reason:        reason,
+				FilledCount:   filled,
+				Limit:         resumeLimit,
+			}); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	// Resume on restart (best-effort), before starting live stream to avoid interleaving.
+	if c.Resume && prevResume != nil {
+		from, err := parseRFC3339Any(prevResume.LastLogTimestamp)
+		if err != nil {
+			return c.outputError(globals, "RESUME_STATE_ERROR", fmt.Sprintf("invalid last_log_timestamp in %s: %s", resumePath, err))
+		}
+		if from.IsZero() {
+			from, err = parseRFC3339Any(prevResume.LastSeenTimestamp)
+			if err != nil {
+				return c.outputError(globals, "RESUME_STATE_ERROR", fmt.Sprintf("invalid last_seen_timestamp in %s: %s", resumePath, err))
+			}
+		}
+		if !from.IsZero() {
+			to := clk.Now().UTC()
+			if err := backfillGap("restart", from, to); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Persist resume state on exit (best-effort).
+	defer func() {
+		if !c.Resume || resumePath == "" || lastLogTimestamp.IsZero() {
+			return
+		}
+		st := &resumeState{
+			Type:              "resume_state",
+			SchemaVersion:     output.SchemaVersion,
+			App:               c.App,
+			UDID:              device.UDID,
+			LastSeenTimestamp: lastSeen.UTC().Format(time.RFC3339Nano),
+			LastLogTimestamp:  lastLogTimestamp.UTC().Format(time.RFC3339Nano),
+			UpdatedAt:         clk.Now().UTC().Format(time.RFC3339Nano),
+		}
+		if err := saveResumeState(resumePath, st); err != nil {
+			globals.Debug("failed to save resume state: %v", err)
+		}
+	}()
+
+	globals.Debug("Starting log stream...")
+	if err := streamer.Start(ctx, device.UDID, opts); err != nil {
+		return c.outputError(globals, "STREAM_FAILED", err.Error(), hintForStreamOrQuery(err))
+	}
+	defer func() {
+		if err := streamer.Stop(); err != nil {
+			globals.Debug("failed to stop streamer: %v", err)
+		}
+	}()
+	globals.Debug("Log stream started successfully")
+
+	// Emit ready event when --wait-for-launch is used (signals log capture is active)
+	if c.WaitForLaunch {
+		if emitter != nil {
+			if err := emitter.Ready(
+				clk.Now().UTC().Format(time.RFC3339Nano),
+				device.Name,
+				device.UDID,
+				c.App,
+				tailID,
+				sessionTracker.CurrentSession(),
+			); err != nil {
+				return err
+			}
+			if !c.NoAgentHints {
+				if err := emitter.AgentHints(tailID, sessionTracker.CurrentSession(), defaultHintsForTail(c.App != "")); err != nil {
+					return err
+				}
+			}
+		} else {
+			target := c.App
+			if target == "" {
+				target = "all logs"
+			}
+			if _, err := fmt.Fprintf(globals.Stderr, "%s\n", infoStyle.Render(fmt.Sprintf("Ready: log capture active for %s", target))); err != nil {
+				globals.Debug("failed to write ready message: %v", err)
+			}
+			if !c.NoAgentHints {
+				if _, err := fmt.Fprintf(globals.Stderr, "%s\n", warnStyle.Render(fmt.Sprintf("agent_hints: match tail_id=%s", tailID))); err != nil {
+					globals.Debug("failed to write agent_hints message: %v", err)
+				}
+			}
+		}
+	}
+
 	// Process logs
 	for {
 		select {
@@ -499,170 +859,17 @@ func (c *TailCmd) Run(globals *Globals) error {
 			return nil
 
 		case entry := <-streamer.Logs():
-			// Reset idle timer on activity
-			if idleTimer != nil {
-				if !idleTimer.Stop() {
-					select {
-					case <-idleTimer.C:
-					default:
-					}
-				}
-				idleTimer.Reset(idleDuration)
-			}
-
-			// Check for session change (app relaunch)
-			if sessionChange := sessionTracker.CheckEntry(&entry); sessionChange != nil {
-				if log != nil {
-					if sessionChange.StartSession != nil {
-						log.Debug("session rollover -> %d (pid=%d)", sessionChange.StartSession.Session, sessionChange.StartSession.PID)
-					} else if sessionChange.EndSession != nil {
-						log.Debug("session ended -> %d", sessionChange.EndSession.Session)
-					}
-				}
-				if emitter != nil && globals.Verbose && sessionChange.EndSession != nil && sessionChange.StartSession != nil {
-					if err := emitter.SessionDebug(&output.SessionDebugOutput{
-						Type:        "session_debug",
-						TailID:      tailID,
-						Session:     sessionChange.StartSession.Session,
-						PrevSession: sessionChange.EndSession.Session,
-						PID:         sessionChange.StartSession.PID,
-						PrevPID:     sessionChange.EndSession.PID,
-						Reason:      "relaunch",
-						Summary: map[string]interface{}{
-							"total_logs": sessionChange.EndSession.Summary.TotalLogs,
-							"errors":     sessionChange.EndSession.Summary.Errors,
-							"faults":     sessionChange.EndSession.Summary.Faults,
-						},
-					}); err != nil {
-						return err
-					}
-				}
-				// Session changed - emit events
-				if sessionChange.EndSession != nil {
-					// Output session end with summary
-					if emitter != nil {
-						if err := emitter.SessionEnd(sessionChange.EndSession); err != nil {
-							return err
-						}
-						if err := emitter.ClearBuffer("session_end", tailID, sessionChange.EndSession.Session); err != nil {
-							return err
-						}
-						emitHints()
-					}
-				}
-
-				// Rotate file per session when configured
-				if pathBuilder != nil && sessionChange.StartSession != nil {
-					if err := openOutput(sessionChange.StartSession.Session); err != nil {
-						return err
-					}
-					setWriter(outputWriter)
-				}
-
-				if sessionChange.StartSession != nil {
-					// Output stderr alert for AI agents
-					if sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
-						prevSummary := ""
-						if sessionChange.EndSession != nil {
-							prevSummary = fmt.Sprintf(" - Previous: %d logs, %d errors",
-								sessionChange.EndSession.Summary.TotalLogs,
-								sessionChange.EndSession.Summary.Errors)
-						}
-						msg := fmt.Sprintf("🚀 NEW SESSION: App relaunched (PID: %d)%s",
-							sessionChange.StartSession.PID, prevSummary)
-						if _, err := fmt.Fprintf(globals.Stderr, "%s\n", bannerStyle.Render(msg)); err != nil {
-							globals.Debug("failed to write session banner: %v", err)
-						}
-					}
-
-					// Output JSON session start event
-					if emitter != nil {
-						if err := emitter.SessionStart(sessionChange.StartSession); err != nil {
-							return err
-						}
-						if err := emitter.ClearBuffer("session_start", tailID, sessionChange.StartSession.Session); err != nil {
-							return err
-						}
-						emitHints()
-					}
-
-					// Write tmux session banner if in tmux mode
-					if tmuxMgr != nil && sessionChange.StartSession.Alert == "APP_RELAUNCHED" {
-						var prevSummary *domain.SessionSummary
-						if sessionChange.EndSession != nil {
-							prevSummary = &sessionChange.EndSession.Summary
-						}
-						if err := tmuxMgr.WriteSessionBanner(
-							sessionChange.StartSession.Session,
-							c.App,
-							sessionChange.StartSession.PID,
-							prevSummary,
-						); err != nil {
-							globals.Debug("failed to write tmux session banner: %v", err)
-						}
-					}
-				}
-			}
-
-			// Apply where filter if enabled
-			if pipeline != nil && !pipeline.Match(&entry) {
-				continue // Skip entries that don't match where clauses
-			}
-
-			// Apply dedupe filter if enabled
-			if dedupeFilter != nil {
-				result := dedupeFilter.Check(&entry)
-				if !result.ShouldEmit {
-					continue // Skip duplicate
-				}
-				// Add dedupe metadata to first occurrence
-				if result.Count > 1 {
-					entry.DedupeCount = result.Count
-					entry.DedupeFirst = result.FirstSeen.Format(time.RFC3339)
-					entry.DedupeLast = result.LastSeen.Format(time.RFC3339)
-				}
-			}
-
-			// Set session number on entry
-			entry.Session = sessionTracker.CurrentSession()
-			entry.TailID = tailID
-
-			if err := writer.Write(&entry); err != nil {
+			stop, _, err := handleEntry(&entry, true)
+			if err != nil {
 				return err
 			}
-			logsSinceLast++
-			totalLogs++
-			lastSeen = clk.Now()
-			if maxLogs > 0 && totalLogs >= maxLogs {
-				if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
-					if err := emitter.SessionEnd(final); err != nil {
-						return err
-					}
-					if err := emitter.Cutoff("max_logs", tailID, final.Session, totalLogs); err != nil {
-						return err
-					}
-					if err := emitter.WriteHeartbeat(&output.Heartbeat{
-						Type:              "heartbeat",
-						SchemaVersion:     output.SchemaVersion,
-						Timestamp:         clk.Now().UTC().Format(time.RFC3339Nano),
-						UptimeSeconds:     int64(clk.Since(startTime).Seconds()),
-						LogsSinceLast:     logsSinceLast,
-						TailID:            tailID,
-						LatestSession:     sessionTracker.CurrentSession(),
-						LastSeenTimestamp: lastSeen.UTC().Format(time.RFC3339Nano),
-					}); err != nil {
-						return err
-					}
-					if err := emitStats(clk.Now()); err != nil {
-						return err
-					}
-				}
+			if stop {
 				return nil
 			}
 
 		case err := <-streamer.Errors():
-			if !globals.Quiet {
-				if strings.HasPrefix(err.Error(), "reconnect_notice:") {
+			if strings.HasPrefix(err.Error(), "reconnect_notice:") {
+				if !globals.Quiet {
 					if emitter != nil {
 						if err := emitter.WriteReconnect(err.Error(), tailID, "info"); err != nil {
 							return err
@@ -672,9 +879,20 @@ func (c *TailCmd) Run(globals *Globals) error {
 							globals.Debug("failed to write reconnect notice: %v", werr)
 						}
 					}
-				} else {
-					emitWarning(globals, emitter, err.Error())
 				}
+
+				if c.Resume {
+					from := lastLogTimestamp
+					if lastBackfillTo.After(from) {
+						from = lastBackfillTo
+					}
+					to := clk.Now().UTC()
+					if err := backfillGap("reconnect", from, to); err != nil && !globals.Quiet {
+						emitWarning(globals, emitter, "resume_backfill_failed: "+err.Error())
+					}
+				}
+			} else if !globals.Quiet {
+				emitWarning(globals, emitter, err.Error())
 			}
 
 		case <-func() <-chan time.Time {

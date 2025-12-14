@@ -73,6 +73,25 @@ func TestNDJSONWriterContract_AllTypesHaveSchemaVersion(t *testing.T) {
 	require.NoError(t, w.WriteCutoff("max_duration", "tail-1", 2, 42))
 	require.NoError(t, w.WriteRotation("/tmp/out.ndjson", "tail-1", 2))
 	require.NoError(t, w.WriteReconnect("reconnecting", "tail-1", "warn"))
+	require.NoError(t, w.WriteGapDetected(&GapDetectedOutput{
+		Timestamp:     now.Format(time.RFC3339Nano),
+		TailID:        "tail-1",
+		Session:       2,
+		FromTimestamp: now.Add(-5 * time.Second).Format(time.RFC3339Nano),
+		ToTimestamp:   now.Format(time.RFC3339Nano),
+		Reason:        "reconnect",
+		WillFill:      true,
+	}))
+	require.NoError(t, w.WriteGapFilled(&GapFilledOutput{
+		Timestamp:     now.Format(time.RFC3339Nano),
+		TailID:        "tail-1",
+		Session:       2,
+		FromTimestamp: now.Add(-5 * time.Second).Format(time.RFC3339Nano),
+		ToTimestamp:   now.Format(time.RFC3339Nano),
+		Reason:        "reconnect",
+		FilledCount:   3,
+		Limit:         5000,
+	}))
 	require.NoError(t, w.WriteSessionDebug(&SessionDebugOutput{
 		Type:        "session_debug",
 		TailID:      "tail-1",
@@ -83,8 +102,35 @@ func TestNDJSONWriterContract_AllTypesHaveSchemaVersion(t *testing.T) {
 		Reason:      "pid_change",
 	}))
 	require.NoError(t, w.WriteTmux("xcw", "tmux attach -t xcw"))
-	require.NoError(t, w.WriteTrigger("foo", "echo hi", "matched"))
-	require.NoError(t, w.WriteTriggerError("echo hi", "exit status 1"))
+	require.NoError(t, w.WriteTrigger(&TriggerOutput{
+		Timestamp:     now.Format(time.RFC3339Nano),
+		TailID:        "tail-1",
+		Session:       2,
+		TriggerID:     "trigger-1",
+		Trigger:       "foo",
+		Command:       "echo hi",
+		Message:       "matched",
+		SchemaVersion: 0,
+	}))
+	require.NoError(t, w.WriteTriggerError(&TriggerErrorOutput{
+		Timestamp: now.Format(time.RFC3339Nano),
+		TailID:    "tail-1",
+		Session:   2,
+		TriggerID: "trigger-1",
+		Trigger:   "foo",
+		Command:   "echo hi",
+		Error:     "exit status 1",
+	}))
+	require.NoError(t, w.WriteTriggerResult(&TriggerResultOutput{
+		Timestamp:  now.Format(time.RFC3339Nano),
+		TailID:     "tail-1",
+		Session:    2,
+		TriggerID:  "trigger-1",
+		Trigger:    "foo",
+		Command:    "echo hi",
+		ExitCode:   1,
+		DurationMs: 5,
+	}))
 	require.NoError(t, w.WriteReady(now.Format(time.RFC3339Nano), "Sim", "UDID", "com.example", "tail-1", 2))
 	require.NoError(t, w.WriteClearBuffer("session_end", "tail-1", 2))
 	require.NoError(t, w.WriteAgentHints("tail-1", 2, []string{"h1"}))

@@ -32,4 +32,8 @@ type TailAgentFlags struct {
 	MaxDuration   string `help:"Stop after duration (e.g., '5m') emitting session_end (agent-safe cutoff)"`
 	MaxLogs       int    `help:"Stop after N logs emitting session_end (agent-safe cutoff)"`
 	SessionIdle   string `help:"Emit session boundary after idle period with no logs (e.g., '60s')"`
+	Resume        bool   `help:"Backfill gaps on reconnect/restart via 'query' (NDJSON only; requires --app)"`
+	ResumeState   string `help:"Path to resume state file (default: ~/.xcw/resume/<bundle_id>.json)"`
+	ResumeMaxGap  string `default:"5m" help:"Maximum gap to backfill when --resume is enabled (e.g., '5m', '30s')"`
+	ResumeLimit   int    `default:"5000" help:"Maximum number of logs to backfill per gap when --resume is enabled"`
 }

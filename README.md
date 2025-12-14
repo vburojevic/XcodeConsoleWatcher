@@ -455,12 +455,12 @@ This allows AI agents to keep `xcw tail` running continuously while you rebuild 
 3. On `session_start`, `session_end`, or `clear_buffer`, reset any caches (dedupe/pattern memory) before continuing.
 4. When recording to disk, read only the newest rotated file unless explicitly comparing runs.
 5. Use older sessions/files only when you are asked to compare behavior across runs.
-6. Watch for `reconnect_notice` to mark possible log gaps; watch `cutoff_reached` to know the stream ended intentionally.
+6. Watch for `reconnect_notice` (and `gap_detected`/`gap_filled` when `--resume` is enabled) to mark possible log gaps; watch `cutoff_reached` to know the stream ended intentionally.
 7. Use `metadata` at startup for version/commit info; `heartbeat.last_seen_timestamp` to detect stalls.
 
 ## Output format & JSON schema
 
-By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Types include `log`, `metadata`, `ready`, `heartbeat`, `stats`, `summary`, `analysis`, `session_start`, `session_end`, `clear_buffer`, `reconnect_notice`, `cutoff_reached`, `console`, `simulator`, `app`, `doctor`, `pick`, and `session`.  The current schema version is `1`.
+By default `xcw` writes NDJSON to stdout.  Each event includes a `type` and `schemaVersion` field.  Common types include `log`, `metadata`, `ready`, `heartbeat`, `stats`, `summary`, `analysis`, `session_start`, `session_end`, `clear_buffer`, `reconnect_notice`, `gap_detected`, `gap_filled`, `cutoff_reached`, `trigger`, `trigger_result`, `trigger_error`, `console`, `simulator`, `app`, `doctor`, `pick`, and `session`.  The current schema version is `1`.
 
 Example log entry:
 
@@ -520,6 +520,8 @@ Shell quoting bites. Prefer quoting complex predicates/expressions:
 ### Stream reconnects and gaps
 
 If you see `reconnect_notice`, there may be log gaps. Run with `-v/--verbose` to surface diagnostics (including `xcrun` stderr) and watch `heartbeat.last_seen_timestamp` to detect stalls.
+
+For NDJSON tails with `--resume` (requires `--app`), `xcw` will emit `gap_detected` and may emit `gap_filled` after backfilling via `query` (bounded by `--resume-max-gap` and `--resume-limit`).
 
 ## Global flags
 

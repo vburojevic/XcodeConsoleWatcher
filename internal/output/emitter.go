@@ -45,3 +45,5 @@ func (e *Emitter) WriteReconnect(msg, tailID, severity string) error {
 	return e.w.WriteReconnect(msg, tailID, severity)
 }
 func (e *Emitter) SessionDebug(sd *SessionDebugOutput) error { return e.w.WriteSessionDebug(sd) }
+func (e *Emitter) GapDetected(g *GapDetectedOutput) error    { return e.w.WriteGapDetected(g) }
+func (e *Emitter) GapFilled(g *GapFilledOutput) error        { return e.w.WriteGapFilled(g) }

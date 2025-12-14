@@ -600,6 +600,124 @@
       "title": "Error",
       "type": "object"
     },
+    "gap_detected": {
+      "description": "Signals that a stream gap was detected (and may be backfilled when --resume is enabled)",
+      "properties": {
+        "from_timestamp": {
+          "description": "Start of missing window (exclusive)",
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Gap reason (reconnect, restart, etc.)",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": 1,
+          "description": "Schema version for compatibility detection",
+          "type": "integer"
+        },
+        "session": {
+          "description": "Session number (when available)",
+          "type": "integer"
+        },
+        "skip_reason": {
+          "description": "Reason the gap was not backfilled (when will_fill=false)",
+          "type": "string"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "When the gap was detected",
+          "format": "date-time",
+          "type": "string"
+        },
+        "to_timestamp": {
+          "description": "End of missing window (inclusive)",
+          "format": "date-time",
+          "type": "string"
+        },
+        "type": {
+          "const": "gap_detected",
+          "type": "string"
+        },
+        "will_fill": {
+          "description": "True if xcw will attempt to backfill the gap via query",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "schemaVersion",
+        "from_timestamp",
+        "to_timestamp",
+        "reason",
+        "will_fill"
+      ],
+      "title": "Gap Detected",
+      "type": "object"
+    },
+    "gap_filled": {
+      "description": "Signals that a previously detected gap was backfilled via query",
+      "properties": {
+        "filled_count": {
+          "description": "Number of log entries emitted from the backfill",
+          "type": "integer"
+        },
+        "from_timestamp": {
+          "description": "Start of missing window (exclusive)",
+          "format": "date-time",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Maximum number of logs that were eligible for backfill",
+          "type": "integer"
+        },
+        "reason": {
+          "description": "Gap reason (reconnect, restart, etc.)",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": 1,
+          "description": "Schema version for compatibility detection",
+          "type": "integer"
+        },
+        "session": {
+          "description": "Session number (when available)",
+          "type": "integer"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "When the gap was backfill completed",
+          "format": "date-time",
+          "type": "string"
+        },
+        "to_timestamp": {
+          "description": "End of missing window (inclusive)",
+          "format": "date-time",
+          "type": "string"
+        },
+        "type": {
+          "const": "gap_filled",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "schemaVersion",
+        "from_timestamp",
+        "to_timestamp",
+        "reason",
+        "filled_count"
+      ],
+      "title": "Gap Filled",
+      "type": "object"
+    },
     "heartbeat": {
       "description": "Keepalive message indicating stream is active",
       "properties": {
@@ -1405,14 +1523,14 @@
       "type": "object"
     },
     "trigger": {
-      "description": "Notification when a trigger fires",
+      "description": "Notification when a watch trigger starts",
       "properties": {
         "command": {
           "description": "Command being executed",
           "type": "string"
         },
-        "match": {
-          "description": "Log message that triggered the action",
+        "message": {
+          "description": "Log message that triggered the action (when available)",
           "type": "string"
         },
         "schemaVersion": {
@@ -1420,8 +1538,25 @@
           "description": "Schema version for compatibility detection",
           "type": "integer"
         },
-        "trigger_type": {
+        "session": {
+          "description": "Session number (when available)",
+          "type": "integer"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "Timestamp when the trigger started",
+          "format": "date-time",
+          "type": "string"
+        },
+        "trigger": {
           "description": "Type of trigger (error, fault, or pattern:regex)",
+          "type": "string"
+        },
+        "trigger_id": {
+          "description": "Trigger execution identifier (for correlating start/result)",
           "type": "string"
         },
         "type": {
@@ -1432,7 +1567,7 @@
       "required": [
         "type",
         "schemaVersion",
-        "trigger_type",
+        "trigger",
         "command"
       ],
       "title": "Trigger Event",
@@ -1454,6 +1589,27 @@
           "description": "Schema version for compatibility detection",
           "type": "integer"
         },
+        "session": {
+          "description": "Session number (when available)",
+          "type": "integer"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "Timestamp when the trigger failed",
+          "format": "date-time",
+          "type": "string"
+        },
+        "trigger": {
+          "description": "Type of trigger (error, fault, or pattern:regex)",
+          "type": "string"
+        },
+        "trigger_id": {
+          "description": "Trigger execution identifier (for correlating start/result)",
+          "type": "string"
+        },
         "type": {
           "const": "trigger_error",
           "type": "string"
@@ -1466,6 +1622,74 @@
         "error"
       ],
       "title": "Trigger Error",
+      "type": "object"
+    },
+    "trigger_result": {
+      "description": "Completion details for a watch trigger command",
+      "properties": {
+        "command": {
+          "description": "Trigger command",
+          "type": "string"
+        },
+        "duration_ms": {
+          "description": "Duration of the trigger execution in milliseconds",
+          "type": "integer"
+        },
+        "error": {
+          "description": "Error message (non-empty on failure)",
+          "type": "string"
+        },
+        "exit_code": {
+          "description": "Exit code from the trigger command (-1 when unavailable)",
+          "type": "integer"
+        },
+        "output": {
+          "description": "Captured trigger output (when trigger output mode is capture)",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": 1,
+          "description": "Schema version for compatibility detection",
+          "type": "integer"
+        },
+        "session": {
+          "description": "Session number (when available)",
+          "type": "integer"
+        },
+        "tail_id": {
+          "description": "Tail invocation identifier",
+          "type": "string"
+        },
+        "timed_out": {
+          "description": "True if the trigger timed out",
+          "type": "boolean"
+        },
+        "timestamp": {
+          "description": "Timestamp when the trigger completed",
+          "format": "date-time",
+          "type": "string"
+        },
+        "trigger": {
+          "description": "Type of trigger (error, fault, or pattern:regex)",
+          "type": "string"
+        },
+        "trigger_id": {
+          "description": "Trigger execution identifier (for correlating start/result)",
+          "type": "string"
+        },
+        "type": {
+          "const": "trigger_result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "schemaVersion",
+        "command",
+        "exit_code",
+        "duration_ms"
+      ],
+      "title": "Trigger Result",
       "type": "object"
     },
     "update": {

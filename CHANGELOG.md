@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2025-12-14
+
+### Added
+- CI now runs on macOS as well as Linux, including docs/schema drift checks.
+- Shell completion scripts are generated from the Kong CLI model to avoid drift.
+- `xcw watch` now supports `--where`, `--dedupe`, `--dedupe-window`, repeatable `--exclude`, and `--process`.
+- NDJSON `trigger_result` plus correlation fields (`tail_id`, `session`, `trigger_id`) for watch triggers.
+- `xcw tail --resume` to optionally backfill gaps on restart/reconnect, emitting NDJSON `gap_detected`/`gap_filled`.
+
+### Changed
+- Watch triggers now emit start (`trigger`) + completion (`trigger_result`) events, with `trigger_error` reserved for failures.
+
+### Fixed
+- Removed unused `embedfiles` package and cleaned up dead `internal/app` directory.
+
 ## [0.18.0] - 2025-12-14
 
 ### Added

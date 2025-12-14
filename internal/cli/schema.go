@@ -9,7 +9,7 @@ import (
 
 // SchemaCmd outputs JSON Schema for xcw output types
 type SchemaCmd struct {
-	Type      []string `short:"t" help:"Output types to include (log,summary,analysis,heartbeat,stats,metadata,ready,session_start,session_end,clear_buffer,agent_hints,cutoff_reached,reconnect_notice,error,rotation,console,discovery,simulator,tmux,info,warning,trigger,trigger_error,doctor,app,apps_summary,pick,update,config,config_path,session,session_debug). Default: all"`
+	Type      []string `short:"t" help:"Output types to include (log,summary,analysis,heartbeat,stats,metadata,ready,session_start,session_end,clear_buffer,agent_hints,cutoff_reached,reconnect_notice,gap_detected,gap_filled,error,rotation,console,discovery,simulator,tmux,info,warning,trigger,trigger_error,trigger_result,doctor,app,apps_summary,pick,update,config,config_path,session,session_debug). Default: all"`
 	Changelog bool     `help:"Output schema changelog instead of full schema"`
 }
 
@@ -44,6 +44,8 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 		"agent_hints":      agentHintsSchema(),
 		"cutoff_reached":   cutoffSchema(),
 		"reconnect_notice": reconnectSchema(),
+		"gap_detected":     gapDetectedSchema(),
+		"gap_filled":       gapFilledSchema(),
 		"error":            errorSchema(),
 		"rotation":         rotationSchema(),
 		"console":          consoleSchema(),
@@ -54,6 +56,7 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 		"warning":          warningSchema(),
 		"trigger":          triggerSchema(),
 		"trigger_error":    triggerErrorSchema(),
+		"trigger_result":   triggerResultSchema(),
 		"doctor":           doctorSchema(),
 		"app":              appSchema(),
 		"apps_summary":     appsSummarySchema(),
@@ -82,6 +85,8 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 			"agent_hints",
 			"cutoff_reached",
 			"reconnect_notice",
+			"gap_detected",
+			"gap_filled",
 			"error",
 			"rotation",
 			"console",
@@ -92,6 +97,7 @@ func (c *SchemaCmd) Run(globals *Globals) error {
 			"warning",
 			"trigger",
 			"trigger_error",
+			"trigger_result",
 			"doctor",
 			"app",
 			"apps_summary",
@@ -471,14 +477,31 @@ func triggerSchema() map[string]interface{} {
 	return map[string]interface{}{
 		"type":        "object",
 		"title":       "Trigger Event",
-		"description": "Notification when a trigger fires",
+		"description": "Notification when a watch trigger starts",
 		"properties": map[string]interface{}{
 			"type": map[string]interface{}{
 				"type":  "string",
 				"const": "trigger",
 			},
 			"schemaVersion": schemaVersionProperty(),
-			"trigger_type": map[string]interface{}{
+			"timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "Timestamp when the trigger started",
+			},
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Session number (when available)",
+			},
+			"trigger_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Trigger execution identifier (for correlating start/result)",
+			},
+			"trigger": map[string]interface{}{
 				"type":        "string",
 				"description": "Type of trigger (error, fault, or pattern:regex)",
 			},
@@ -486,12 +509,12 @@ func triggerSchema() map[string]interface{} {
 				"type":        "string",
 				"description": "Command being executed",
 			},
-			"match": map[string]interface{}{
+			"message": map[string]interface{}{
 				"type":        "string",
-				"description": "Log message that triggered the action",
+				"description": "Log message that triggered the action (when available)",
 			},
 		},
-		"required": []string{"type", "schemaVersion", "trigger_type", "command"},
+		"required": []string{"type", "schemaVersion", "trigger", "command"},
 	}
 }
 
@@ -1159,6 +1182,108 @@ func reconnectSchema() map[string]interface{} {
 	}
 }
 
+func gapDetectedSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "object",
+		"title":       "Gap Detected",
+		"description": "Signals that a stream gap was detected (and may be backfilled when --resume is enabled)",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":  "string",
+				"const": "gap_detected",
+			},
+			"schemaVersion": schemaVersionProperty(),
+			"timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "When the gap was detected",
+			},
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Session number (when available)",
+			},
+			"from_timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "Start of missing window (exclusive)",
+			},
+			"to_timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "End of missing window (inclusive)",
+			},
+			"reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Gap reason (reconnect, restart, etc.)",
+			},
+			"will_fill": map[string]interface{}{
+				"type":        "boolean",
+				"description": "True if xcw will attempt to backfill the gap via query",
+			},
+			"skip_reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Reason the gap was not backfilled (when will_fill=false)",
+			},
+		},
+		"required": []string{"type", "schemaVersion", "from_timestamp", "to_timestamp", "reason", "will_fill"},
+	}
+}
+
+func gapFilledSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "object",
+		"title":       "Gap Filled",
+		"description": "Signals that a previously detected gap was backfilled via query",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":  "string",
+				"const": "gap_filled",
+			},
+			"schemaVersion": schemaVersionProperty(),
+			"timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "When the gap was backfill completed",
+			},
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Session number (when available)",
+			},
+			"from_timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "Start of missing window (exclusive)",
+			},
+			"to_timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "End of missing window (inclusive)",
+			},
+			"reason": map[string]interface{}{
+				"type":        "string",
+				"description": "Gap reason (reconnect, restart, etc.)",
+			},
+			"filled_count": map[string]interface{}{
+				"type":        "integer",
+				"description": "Number of log entries emitted from the backfill",
+			},
+			"limit": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum number of logs that were eligible for backfill",
+			},
+		},
+		"required": []string{"type", "schemaVersion", "from_timestamp", "to_timestamp", "reason", "filled_count"},
+	}
+}
+
 func consoleSchema() map[string]interface{} {
 	return map[string]interface{}{
 		"type":        "object",
@@ -1324,6 +1449,27 @@ func triggerErrorSchema() map[string]interface{} {
 				"const": "trigger_error",
 			},
 			"schemaVersion": schemaVersionProperty(),
+			"timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "Timestamp when the trigger failed",
+			},
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Session number (when available)",
+			},
+			"trigger_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Trigger execution identifier (for correlating start/result)",
+			},
+			"trigger": map[string]interface{}{
+				"type":        "string",
+				"description": "Type of trigger (error, fault, or pattern:regex)",
+			},
 			"command": map[string]interface{}{
 				"type":        "string",
 				"description": "Trigger command",
@@ -1334,6 +1480,67 @@ func triggerErrorSchema() map[string]interface{} {
 			},
 		},
 		"required": []string{"type", "schemaVersion", "command", "error"},
+	}
+}
+
+func triggerResultSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "object",
+		"title":       "Trigger Result",
+		"description": "Completion details for a watch trigger command",
+		"properties": map[string]interface{}{
+			"type": map[string]interface{}{
+				"type":  "string",
+				"const": "trigger_result",
+			},
+			"schemaVersion": schemaVersionProperty(),
+			"timestamp": map[string]interface{}{
+				"type":        "string",
+				"format":      "date-time",
+				"description": "Timestamp when the trigger completed",
+			},
+			"tail_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Tail invocation identifier",
+			},
+			"session": map[string]interface{}{
+				"type":        "integer",
+				"description": "Session number (when available)",
+			},
+			"trigger_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Trigger execution identifier (for correlating start/result)",
+			},
+			"trigger": map[string]interface{}{
+				"type":        "string",
+				"description": "Type of trigger (error, fault, or pattern:regex)",
+			},
+			"command": map[string]interface{}{
+				"type":        "string",
+				"description": "Trigger command",
+			},
+			"exit_code": map[string]interface{}{
+				"type":        "integer",
+				"description": "Exit code from the trigger command (-1 when unavailable)",
+			},
+			"duration_ms": map[string]interface{}{
+				"type":        "integer",
+				"description": "Duration of the trigger execution in milliseconds",
+			},
+			"timed_out": map[string]interface{}{
+				"type":        "boolean",
+				"description": "True if the trigger timed out",
+			},
+			"output": map[string]interface{}{
+				"type":        "string",
+				"description": "Captured trigger output (when trigger output mode is capture)",
+			},
+			"error": map[string]interface{}{
+				"type":        "string",
+				"description": "Error message (non-empty on failure)",
+			},
+		},
+		"required": []string{"type", "schemaVersion", "command", "exit_code", "duration_ms"},
 	}
 }
 

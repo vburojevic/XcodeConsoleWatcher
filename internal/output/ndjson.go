@@ -123,6 +123,34 @@ type ReconnectNotice struct {
 	Severity      string `json:"severity,omitempty"`
 }
 
+// GapDetectedOutput signals that a stream gap was detected (and may be backfilled).
+type GapDetectedOutput struct {
+	Type          string `json:"type"` // Always "gap_detected"
+	SchemaVersion int    `json:"schemaVersion"`
+	Timestamp     string `json:"timestamp,omitempty"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	FromTimestamp string `json:"from_timestamp"`
+	ToTimestamp   string `json:"to_timestamp"`
+	Reason        string `json:"reason"` // reconnect|restart
+	WillFill      bool   `json:"will_fill"`
+	SkipReason    string `json:"skip_reason,omitempty"`
+}
+
+// GapFilledOutput signals that a previously detected gap was backfilled via query.
+type GapFilledOutput struct {
+	Type          string `json:"type"` // Always "gap_filled"
+	SchemaVersion int    `json:"schemaVersion"`
+	Timestamp     string `json:"timestamp,omitempty"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	FromTimestamp string `json:"from_timestamp"`
+	ToTimestamp   string `json:"to_timestamp"`
+	Reason        string `json:"reason"` // reconnect|restart
+	FilledCount   int    `json:"filled_count"`
+	Limit         int    `json:"limit,omitempty"`
+}
+
 // SessionDebugOutput surfaces verbose session transition info
 type SessionDebugOutput struct {
 	Type          string                 `json:"type"` // Always "session_debug"
@@ -148,17 +176,43 @@ type TmuxOutput struct {
 type TriggerOutput struct {
 	Type          string `json:"type"` // Always "trigger"
 	SchemaVersion int    `json:"schemaVersion"`
+	Timestamp     string `json:"timestamp,omitempty"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	TriggerID     string `json:"trigger_id,omitempty"`
 	Trigger       string `json:"trigger"`
 	Command       string `json:"command"`
-	Message       string `json:"message"`
+	Message       string `json:"message,omitempty"`
 }
 
 // TriggerErrorOutput represents a trigger execution error
 type TriggerErrorOutput struct {
 	Type          string `json:"type"` // Always "trigger_error"
 	SchemaVersion int    `json:"schemaVersion"`
+	Timestamp     string `json:"timestamp,omitempty"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	TriggerID     string `json:"trigger_id,omitempty"`
+	Trigger       string `json:"trigger,omitempty"`
 	Command       string `json:"command"`
 	Error         string `json:"error"`
+}
+
+// TriggerResultOutput represents the completion of a trigger execution.
+type TriggerResultOutput struct {
+	Type          string `json:"type"` // Always "trigger_result"
+	SchemaVersion int    `json:"schemaVersion"`
+	Timestamp     string `json:"timestamp,omitempty"`
+	TailID        string `json:"tail_id,omitempty"`
+	Session       int    `json:"session,omitempty"`
+	TriggerID     string `json:"trigger_id,omitempty"`
+	Trigger       string `json:"trigger,omitempty"`
+	Command       string `json:"command"`
+	ExitCode      int    `json:"exit_code"`
+	DurationMs    int64  `json:"duration_ms"`
+	TimedOut      bool   `json:"timed_out,omitempty"`
+	Output        string `json:"output,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 // ClearBufferOutput instructs consumers to discard cached state at session boundaries
@@ -348,6 +402,28 @@ func (w *NDJSONWriter) WriteReconnect(message, tailID, severity string) error {
 	})
 }
 
+// WriteGapDetected outputs a gap detection event.
+func (w *NDJSONWriter) WriteGapDetected(g *GapDetectedOutput) error {
+	if g.Type == "" {
+		g.Type = "gap_detected"
+	}
+	if g.SchemaVersion == 0 {
+		g.SchemaVersion = SchemaVersion
+	}
+	return w.encoder.Encode(g)
+}
+
+// WriteGapFilled outputs a gap backfill completion event.
+func (w *NDJSONWriter) WriteGapFilled(g *GapFilledOutput) error {
+	if g.Type == "" {
+		g.Type = "gap_filled"
+	}
+	if g.SchemaVersion == 0 {
+		g.SchemaVersion = SchemaVersion
+	}
+	return w.encoder.Encode(g)
+}
+
 // WriteSessionDebug outputs a verbose session transition for diagnostics
 func (w *NDJSONWriter) WriteSessionDebug(sd *SessionDebugOutput) error {
 	sd.SchemaVersion = SchemaVersion
@@ -364,25 +440,37 @@ func (w *NDJSONWriter) WriteTmux(session, attach string) error {
 	})
 }
 
-// WriteTrigger outputs a trigger event
-func (w *NDJSONWriter) WriteTrigger(trigger, command, message string) error {
-	return w.encoder.Encode(&TriggerOutput{
-		Type:          "trigger",
-		SchemaVersion: SchemaVersion,
-		Trigger:       trigger,
-		Command:       command,
-		Message:       message,
-	})
+// WriteTrigger outputs a trigger event.
+func (w *NDJSONWriter) WriteTrigger(t *TriggerOutput) error {
+	if t.Type == "" {
+		t.Type = "trigger"
+	}
+	if t.SchemaVersion == 0 {
+		t.SchemaVersion = SchemaVersion
+	}
+	return w.encoder.Encode(t)
 }
 
-// WriteTriggerError outputs a trigger execution error
-func (w *NDJSONWriter) WriteTriggerError(command, errMsg string) error {
-	return w.encoder.Encode(&TriggerErrorOutput{
-		Type:          "trigger_error",
-		SchemaVersion: SchemaVersion,
-		Command:       command,
-		Error:         errMsg,
-	})
+// WriteTriggerError outputs a trigger execution error.
+func (w *NDJSONWriter) WriteTriggerError(t *TriggerErrorOutput) error {
+	if t.Type == "" {
+		t.Type = "trigger_error"
+	}
+	if t.SchemaVersion == 0 {
+		t.SchemaVersion = SchemaVersion
+	}
+	return w.encoder.Encode(t)
+}
+
+// WriteTriggerResult outputs a trigger completion event.
+func (w *NDJSONWriter) WriteTriggerResult(t *TriggerResultOutput) error {
+	if t.Type == "" {
+		t.Type = "trigger_result"
+	}
+	if t.SchemaVersion == 0 {
+		t.SchemaVersion = SchemaVersion
+	}
+	return w.encoder.Encode(t)
 }
 
 // WriteReady outputs a ready signal indicating log capture is active

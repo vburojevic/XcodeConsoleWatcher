@@ -2,6 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/alecthomas/kong"
 )
 
 // CompletionCmd generates shell completions
@@ -9,244 +13,498 @@ type CompletionCmd struct {
 	Shell string `arg:"" enum:"bash,zsh,fish" help:"Shell type (bash, zsh, fish)"`
 }
 
-// Run executes the completion command
-func (c *CompletionCmd) Run(globals *Globals) error {
+type completionNode struct {
+	Subcommands []string
+	Flags       []string
+}
+
+type completionIndex struct {
+	Nodes      map[string]completionNode
+	EnumByFlag map[string][]string // flag token (-f/--format/--foo) -> enum values
+	KnownPaths []string
+}
+
+// Run executes the completion command.
+//
+// Note: we accept *kong.Context so completion output stays in sync with the actual CLI model.
+func (c *CompletionCmd) Run(globals *Globals, ctx *kong.Context) error {
+	model := (*kong.Node)(nil)
+	if ctx != nil && ctx.Kong != nil && ctx.Model != nil {
+		model = ctx.Model.Node
+	}
+	idx := buildCompletionIndex(model)
+
 	switch c.Shell {
 	case "bash":
-		return c.generateBash(globals)
+		return c.generateBash(globals, idx)
 	case "zsh":
-		return c.generateZsh(globals)
+		return c.generateZsh(globals, idx)
 	case "fish":
-		return c.generateFish(globals)
+		return c.generateFish(globals, idx)
 	default:
 		return fmt.Errorf("unsupported shell: %s", c.Shell)
 	}
 }
 
-func (c *CompletionCmd) generateBash(globals *Globals) error {
-	script := `# xcw bash completion script
+func buildCompletionIndex(model *kong.Node) completionIndex {
+	// Be resilient when ctx/model isn't available (eg. tests or direct invocation).
+	if model == nil {
+		return completionIndex{
+			Nodes:      map[string]completionNode{},
+			EnumByFlag: map[string][]string{},
+			KnownPaths: []string{""},
+		}
+	}
+
+	nodes := map[string]completionNode{}
+	enumByFlag := map[string][]string{}
+	known := map[string]struct{}{"": {}}
+
+	addEnums := func(tokens []string, rawEnum string) {
+		rawEnum = strings.TrimSpace(rawEnum)
+		if rawEnum == "" {
+			return
+		}
+		values := strings.Split(rawEnum, ",")
+		out := make([]string, 0, len(values))
+		for _, v := range values {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				out = append(out, v)
+			}
+		}
+		if len(out) == 0 {
+			return
+		}
+		for _, token := range tokens {
+			if token == "" {
+				continue
+			}
+			// First writer wins (global flags show up everywhere).
+			if _, ok := enumByFlag[token]; ok {
+				continue
+			}
+			enumByFlag[token] = out
+		}
+	}
+
+	var walk func(n *kong.Node, path []string)
+	walk = func(n *kong.Node, path []string) {
+		key := strings.Join(path, "__")
+		known[key] = struct{}{}
+
+		sub := make([]string, 0, len(n.Children))
+		for _, child := range n.Children {
+			if child == nil || child.Type != kong.CommandNode || child.Hidden {
+				continue
+			}
+			sub = append(sub, child.Name)
+			for _, a := range child.Aliases {
+				if strings.TrimSpace(a) != "" {
+					sub = append(sub, a)
+				}
+			}
+		}
+		sub = uniqueSorted(sub)
+
+		// Flags available at this node (includes inherited/global flags).
+		flagTokens := map[string]struct{}{}
+		for _, group := range n.AllFlags(true) {
+			for _, f := range group {
+				if f == nil {
+					continue
+				}
+				tokens := flagCompletionTokens(f)
+				for _, t := range tokens {
+					flagTokens[t] = struct{}{}
+				}
+				addEnums(tokens, f.Enum)
+			}
+		}
+		flags := make([]string, 0, len(flagTokens))
+		for t := range flagTokens {
+			flags = append(flags, t)
+		}
+		sort.Strings(flags)
+
+		nodes[key] = completionNode{
+			Subcommands: sub,
+			Flags:       flags,
+		}
+
+		for _, child := range n.Children {
+			if child == nil || child.Type != kong.CommandNode || child.Hidden {
+				continue
+			}
+			walk(child, append(path, child.Name))
+		}
+	}
+
+	walk(model, nil)
+
+	knownPaths := make([]string, 0, len(known))
+	for k := range known {
+		knownPaths = append(knownPaths, k)
+	}
+	sort.Strings(knownPaths)
+
+	return completionIndex{
+		Nodes:      nodes,
+		EnumByFlag: enumByFlag,
+		KnownPaths: knownPaths,
+	}
+}
+
+func flagCompletionTokens(f *kong.Flag) []string {
+	if f == nil {
+		return nil
+	}
+	tokens := []string{"--" + f.Name}
+	if f.Short != 0 {
+		tokens = append(tokens, "-"+string(f.Short))
+	}
+	for _, a := range f.Aliases {
+		a = strings.TrimSpace(a)
+		if a != "" {
+			tokens = append(tokens, "--"+a)
+		}
+	}
+	return tokens
+}
+
+func uniqueSorted(in []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func quoteShellWords(words []string) string {
+	// All command names and flags are safe (no spaces) but keep minimal quoting for correctness.
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.TrimSpace(w)
+		if w == "" {
+			continue
+		}
+		out = append(out, w)
+	}
+	return strings.Join(out, " ")
+}
+
+func (c *CompletionCmd) generateBash(globals *Globals, idx completionIndex) error {
+	var sb strings.Builder
+	sb.WriteString(`# xcw bash completion script
 # Add to ~/.bashrc or ~/.bash_profile:
 #   eval "$(xcw completion bash)"
+
+_xcw_complete_simulators() {
+    local sims
+    sims=$(xcrun simctl list devices booted -j 2>/dev/null | grep '"name"' | cut -d'"' -f4 | tr '\n' ' ')
+    COMPREPLY=($(compgen -W "booted ${sims}" -- "${cur}"))
+}
+
+_xcw_is_cmdpath() {
+    case "$1" in
+`)
+	for _, k := range idx.KnownPaths {
+		if k == "" {
+			continue
+		}
+		sb.WriteString("        ")
+		sb.WriteString(k)
+		sb.WriteString(")\n            return 0\n            ;;\n")
+	}
+	sb.WriteString(`        "")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 _xcw_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list tail query summary watch clear schema config version completion"
-    local global_flags="-f --format -l --level -q --quiet -v --verbose"
+    local cmdpath=""
+    local candidate=""
+    local i
+    for ((i=1; i < cword; i++)); do
+        local w=${words[i]}
+        [[ -z "${w}" ]] && continue
+        [[ "${w}" == -* ]] && continue
+        if [[ -z "${candidate}" ]]; then
+            candidate="${w}"
+        else
+            candidate="${candidate}__${w}"
+        fi
+        if _xcw_is_cmdpath "${candidate}"; then
+            cmdpath="${candidate}"
+        else
+            break
+        fi
+    done
 
     case "${prev}" in
-        xcw)
-            COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
-            return
-            ;;
-        -f|--format)
-            COMPREPLY=($(compgen -W "ndjson text" -- "${cur}"))
-            return
-            ;;
-        -l|--level)
-            COMPREPLY=($(compgen -W "debug info default error fault" -- "${cur}"))
-            return
-            ;;
         -s|--simulator)
-            # Complete with booted simulators
-            local sims=$(xcrun simctl list devices booted -j 2>/dev/null | grep '"name"' | cut -d'"' -f4 | tr '\n' ' ')
-            COMPREPLY=($(compgen -W "booted ${sims}" -- "${cur}"))
+            _xcw_complete_simulators
             return
             ;;
-        completion)
-            COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
-            return
+`)
+	// Enum completion cases.
+	enumTokens := make([]string, 0, len(idx.EnumByFlag))
+	for token := range idx.EnumByFlag {
+		enumTokens = append(enumTokens, token)
+	}
+	sort.Strings(enumTokens)
+
+	for _, token := range enumTokens {
+		values := idx.EnumByFlag[token]
+		if len(values) == 0 {
+			continue
+		}
+		sb.WriteString("        ")
+		sb.WriteString(token)
+		sb.WriteString(")\n            COMPREPLY=($(compgen -W \"")
+		sb.WriteString(quoteShellWords(values))
+		sb.WriteString("\" -- \"${cur}\"))\n            return\n            ;;\n")
+	}
+
+	sb.WriteString(`    esac
+
+    local subcommands=""
+    local flags=""
+    case "${cmdpath}" in
+`)
+	// Per-path completion lists.
+	paths := make([]string, 0, len(idx.Nodes))
+	for k := range idx.Nodes {
+		paths = append(paths, k)
+	}
+	sort.Strings(paths)
+
+	for _, k := range paths {
+		node := idx.Nodes[k]
+		sb.WriteString("        \"")
+		sb.WriteString(k)
+		sb.WriteString("\")\n")
+		sb.WriteString("            subcommands=\"")
+		sb.WriteString(quoteShellWords(node.Subcommands))
+		sb.WriteString("\"\n")
+		sb.WriteString("            flags=\"")
+		sb.WriteString(quoteShellWords(node.Flags))
+		sb.WriteString("\"\n")
+		sb.WriteString("            ;;\n")
+	}
+
+	sb.WriteString(`        *)
+            subcommands=""
+            flags=""
             ;;
     esac
 
-    case "${words[1]}" in
-        tail)
-            COMPREPLY=($(compgen -W "-s --simulator -a --app -p --pattern -x --exclude --exclude-subsystem --subsystem --category --buffer-size --summary-interval --heartbeat --tmux --session ${global_flags}" -- "${cur}"))
-            ;;
-        query)
-            COMPREPLY=($(compgen -W "-s --simulator -a --app --since --until -p --pattern -x --exclude --exclude-subsystem --limit --subsystem --category --analyze ${global_flags}" -- "${cur}"))
-            ;;
-        list)
-            COMPREPLY=($(compgen -W "-b --booted-only --runtime ${global_flags}" -- "${cur}"))
-            ;;
-        watch)
-            COMPREPLY=($(compgen -W "-s --simulator -a --app --on-error --on-fault --on-pattern --cooldown ${global_flags}" -- "${cur}"))
-            ;;
-        schema)
-            COMPREPLY=($(compgen -W "-t --type ${global_flags}" -- "${cur}"))
-            ;;
-        *)
-            COMPREPLY=($(compgen -W "${commands} ${global_flags}" -- "${cur}"))
-            ;;
-    esac
+    if [[ "${cur}" == -* ]]; then
+        COMPREPLY=($(compgen -W "${flags}" -- "${cur}"))
+        return
+    fi
+
+    if [[ -n "${subcommands}" ]]; then
+        COMPREPLY=($(compgen -W "${subcommands}" -- "${cur}"))
+        return
+    fi
 }
 
 complete -F _xcw_completions xcw
-`
-	_, err := fmt.Fprint(globals.Stdout, script)
+`)
+
+	_, err := fmt.Fprint(globals.Stdout, sb.String())
 	return err
 }
 
-func (c *CompletionCmd) generateZsh(globals *Globals) error {
-	script := `#compdef xcw
+func (c *CompletionCmd) generateZsh(globals *Globals, idx completionIndex) error {
+	// Keep this intentionally lightweight (no deep zsh _arguments trees).
+	// This is generated from the Kong model to avoid command/flag drift.
+	var sb strings.Builder
+	sb.WriteString(`#compdef xcw
 # xcw zsh completion script
 # Add to ~/.zshrc:
 #   eval "$(xcw completion zsh)"
 
+_xcw_complete_simulators() {
+  local -a sims
+  sims=(booted ${(f)"$(xcrun simctl list devices booted -j 2>/dev/null | grep '\"name\"' | cut -d'\"' -f4)"})
+  _describe 'simulator' sims
+}
+
+_xcw_is_cmdpath() {
+  case "$1" in
+`)
+	for _, k := range idx.KnownPaths {
+		if k == "" {
+			continue
+		}
+		sb.WriteString("    ")
+		sb.WriteString(k)
+		sb.WriteString(") return 0;;\n")
+	}
+	sb.WriteString(`    "") return 0;;
+    *) return 1;;
+  esac
+}
+
 _xcw() {
-    local -a commands
-    commands=(
-        'list:List available simulators'
-        'tail:Stream logs from a running simulator'
-        'query:Query historical logs from simulator'
-        'summary:Output summary of recent logs'
-        'watch:Watch logs and trigger commands on patterns'
-        'clear:Clear tmux session content'
-        'schema:Output JSON Schema for xcw output types'
-        'config:Show or manage configuration'
-        'version:Show version information'
-        'completion:Generate shell completions'
-    )
+  local cur prev cmdpath candidate
+  cur="${words[CURRENT]}"
+  prev="${words[CURRENT-1]}"
 
-    local -a global_opts
-    global_opts=(
-        '-f[Output format]:format:(ndjson text)'
-        '--format[Output format]:format:(ndjson text)'
-        '-l[Minimum log level]:level:(debug info default error fault)'
-        '--level[Minimum log level]:level:(debug info default error fault)'
-        '-q[Suppress non-log output]'
-        '--quiet[Suppress non-log output]'
-        '-v[Show debug output]'
-        '--verbose[Show debug output]'
-    )
+  cmdpath=""
+  candidate=""
+  local i
+  for ((i=2; i < CURRENT; i++)); do
+    local w="${words[i]}"
+    [[ -z "${w}" ]] && continue
+    [[ "${w}" == -* ]] && continue
+    if [[ -z "${candidate}" ]]; then
+      candidate="${w}"
+    else
+      candidate="${candidate}__${w}"
+    fi
+    if _xcw_is_cmdpath "${candidate}"; then
+      cmdpath="${candidate}"
+    else
+      break
+    fi
+  done
 
-    _arguments -C \
-        $global_opts \
-        '1: :->command' \
-        '*:: :->args'
+  case "${prev}" in
+    -s|--simulator)
+      _xcw_complete_simulators
+      return
+      ;;
+`)
+	enumTokens := make([]string, 0, len(idx.EnumByFlag))
+	for token := range idx.EnumByFlag {
+		enumTokens = append(enumTokens, token)
+	}
+	sort.Strings(enumTokens)
+	for _, token := range enumTokens {
+		values := idx.EnumByFlag[token]
+		if len(values) == 0 {
+			continue
+		}
+		sb.WriteString("    ")
+		sb.WriteString(token)
+		sb.WriteString(")\n      _values '")
+		sb.WriteString(token)
+		sb.WriteString("' ")
+		sb.WriteString(quoteShellWords(values))
+		sb.WriteString("\n      return\n      ;;\n")
+	}
+	sb.WriteString(`  esac
 
-    case $state in
-        command)
-            _describe 'command' commands
-            ;;
-        args)
-            case $words[1] in
-                tail)
-                    _arguments \
-                        '-s[Simulator name or UDID]:simulator:->simulators' \
-                        '--simulator[Simulator name or UDID]:simulator:->simulators' \
-                        '-a[App bundle identifier]:app:' \
-                        '--app[App bundle identifier]:app:' \
-                        '-p[Regex pattern to filter]:pattern:' \
-                        '--pattern[Regex pattern to filter]:pattern:' \
-                        '-x[Regex pattern to exclude]:pattern:' \
-                        '--exclude[Regex pattern to exclude]:pattern:' \
-                        '--heartbeat[Emit heartbeat interval]:interval:' \
-                        '--tmux[Output to tmux session]' \
-                        '*--subsystem[Filter by subsystem]:subsystem:' \
-                        '*--category[Filter by category]:category:' \
-                        $global_opts
-                    ;;
-                query)
-                    _arguments \
-                        '-s[Simulator name or UDID]:simulator:->simulators' \
-                        '--simulator[Simulator name or UDID]:simulator:->simulators' \
-                        '-a[App bundle identifier]:app:' \
-                        '--app[App bundle identifier]:app:' \
-                        '--since[How far back to query]:duration:' \
-                        '--limit[Maximum logs]:limit:' \
-                        '--analyze[Include analysis summary]' \
-                        $global_opts
-                    ;;
-                list)
-                    _arguments \
-                        '-b[Show only booted]' \
-                        '--booted-only[Show only booted]' \
-                        '--runtime[Filter by iOS version]:runtime:' \
-                        $global_opts
-                    ;;
-                completion)
-                    _arguments '1:shell:(bash zsh fish)'
-                    ;;
-            esac
+  local -a subcommands
+  local -a flags
+  case "${cmdpath}" in
+`)
+	paths := make([]string, 0, len(idx.Nodes))
+	for k := range idx.Nodes {
+		paths = append(paths, k)
+	}
+	sort.Strings(paths)
 
-            case $state in
-                simulators)
-                    local -a sims
-                    sims=(booted ${(f)"$(xcrun simctl list devices booted -j 2>/dev/null | grep '"name"' | cut -d'"' -f4)"})
-                    _describe 'simulator' sims
-                    ;;
-            esac
-            ;;
-    esac
+	for _, k := range paths {
+		node := idx.Nodes[k]
+		sb.WriteString("    \"")
+		sb.WriteString(k)
+		sb.WriteString("\")\n")
+		sb.WriteString("      subcommands=(")
+		sb.WriteString(quoteShellWords(node.Subcommands))
+		sb.WriteString(")\n")
+		sb.WriteString("      flags=(")
+		sb.WriteString(quoteShellWords(node.Flags))
+		sb.WriteString(")\n")
+		sb.WriteString("      ;;\n")
+	}
+	sb.WriteString(`    *)
+      subcommands=()
+      flags=()
+      ;;
+  esac
+
+  if [[ "${cur}" == -* ]]; then
+    compadd -- ${flags[@]}
+    return
+  fi
+
+  if (( ${#subcommands[@]} > 0 )); then
+    compadd -- ${subcommands[@]}
+    return
+  fi
 }
 
 compdef _xcw xcw
-`
-	_, err := fmt.Fprint(globals.Stdout, script)
+`)
+
+	_, err := fmt.Fprint(globals.Stdout, sb.String())
 	return err
 }
 
-func (c *CompletionCmd) generateFish(globals *Globals) error {
-	script := `# xcw fish completion script
+func (c *CompletionCmd) generateFish(globals *Globals, idx completionIndex) error {
+	var sb strings.Builder
+	sb.WriteString(`# xcw fish completion script
 # Add to ~/.config/fish/completions/xcw.fish
 
 # Disable file completion by default
 complete -c xcw -f
 
-# Commands
-complete -c xcw -n "__fish_use_subcommand" -a "list" -d "List available simulators"
-complete -c xcw -n "__fish_use_subcommand" -a "tail" -d "Stream logs from a running simulator"
-complete -c xcw -n "__fish_use_subcommand" -a "query" -d "Query historical logs from simulator"
-complete -c xcw -n "__fish_use_subcommand" -a "summary" -d "Output summary of recent logs"
-complete -c xcw -n "__fish_use_subcommand" -a "watch" -d "Watch logs and trigger commands on patterns"
-complete -c xcw -n "__fish_use_subcommand" -a "clear" -d "Clear tmux session content"
-complete -c xcw -n "__fish_use_subcommand" -a "schema" -d "Output JSON Schema for xcw output types"
-complete -c xcw -n "__fish_use_subcommand" -a "config" -d "Show or manage configuration"
-complete -c xcw -n "__fish_use_subcommand" -a "version" -d "Show version information"
-complete -c xcw -n "__fish_use_subcommand" -a "completion" -d "Generate shell completions"
+`)
 
-# Global flags
-complete -c xcw -s f -l format -d "Output format" -xa "ndjson text"
-complete -c xcw -s l -l level -d "Minimum log level" -xa "debug info default error fault"
-complete -c xcw -s q -l quiet -d "Suppress non-log output"
-complete -c xcw -s v -l verbose -d "Show debug output"
+	// Top-level commands (only) keep this fast and broadly compatible.
+	root := idx.Nodes[""]
+	for _, cmd := range root.Subcommands {
+		sb.WriteString("complete -c xcw -n \"__fish_use_subcommand\" -a \"")
+		sb.WriteString(cmd)
+		sb.WriteString("\"\n")
+	}
 
-# Tail command
-complete -c xcw -n "__fish_seen_subcommand_from tail" -s s -l simulator -d "Simulator name or UDID"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -s a -l app -d "App bundle identifier" -r
-complete -c xcw -n "__fish_seen_subcommand_from tail" -s p -l pattern -d "Regex pattern to filter"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -s x -l exclude -d "Regex pattern to exclude"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -l heartbeat -d "Emit heartbeat interval"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -l tmux -d "Output to tmux session"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -l subsystem -d "Filter by subsystem"
-complete -c xcw -n "__fish_seen_subcommand_from tail" -l category -d "Filter by category"
+	// Global flags (those available at root).
+	for _, flag := range root.Flags {
+		if !strings.HasPrefix(flag, "--") {
+			continue
+		}
+		long := strings.TrimPrefix(flag, "--")
+		enum, hasEnum := idx.EnumByFlag[flag]
+		if hasEnum && len(enum) > 0 {
+			sb.WriteString("complete -c xcw -l ")
+			sb.WriteString(long)
+			sb.WriteString(" -xa \"")
+			sb.WriteString(quoteShellWords(enum))
+			sb.WriteString("\"\n")
+			continue
+		}
+		sb.WriteString("complete -c xcw -l ")
+		sb.WriteString(long)
+		sb.WriteString("\n")
+	}
 
-# Query command
-complete -c xcw -n "__fish_seen_subcommand_from query" -s s -l simulator -d "Simulator name or UDID"
-complete -c xcw -n "__fish_seen_subcommand_from query" -s a -l app -d "App bundle identifier" -r
-complete -c xcw -n "__fish_seen_subcommand_from query" -l since -d "How far back to query"
-complete -c xcw -n "__fish_seen_subcommand_from query" -l limit -d "Maximum logs"
-complete -c xcw -n "__fish_seen_subcommand_from query" -l analyze -d "Include analysis summary"
+	sb.WriteString(`
+# Simulator completion (booted)
+complete -c xcw -n "__fish_contains_opt -s s simulator" -a "(xcrun simctl list devices booted -j 2>/dev/null | grep '\"name\"' | cut -d'\"' -f4; echo booted)"
+`)
 
-# List command
-complete -c xcw -n "__fish_seen_subcommand_from list" -s b -l booted-only -d "Show only booted"
-complete -c xcw -n "__fish_seen_subcommand_from list" -l runtime -d "Filter by iOS version"
-
-# Watch command
-complete -c xcw -n "__fish_seen_subcommand_from watch" -s s -l simulator -d "Simulator name or UDID"
-complete -c xcw -n "__fish_seen_subcommand_from watch" -s a -l app -d "App bundle identifier" -r
-complete -c xcw -n "__fish_seen_subcommand_from watch" -l on-error -d "Command on error"
-complete -c xcw -n "__fish_seen_subcommand_from watch" -l on-fault -d "Command on fault"
-complete -c xcw -n "__fish_seen_subcommand_from watch" -l cooldown -d "Cooldown between triggers"
-
-# Completion command
-complete -c xcw -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
-
-# Simulator completion
-complete -c xcw -n "__fish_seen_subcommand_from tail query watch; and __fish_contains_opt -s s simulator" -a "(xcrun simctl list devices booted -j 2>/dev/null | grep '\"name\"' | cut -d'\"' -f4; echo booted)"
-`
-	_, err := fmt.Fprint(globals.Stdout, script)
+	_, err := fmt.Fprint(globals.Stdout, sb.String())
 	return err
 }
