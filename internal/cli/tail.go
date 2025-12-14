@@ -657,6 +657,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 		if !to.After(from) {
 			return nil
 		}
+		if to.After(lastBackfillTo) {
+			lastBackfillTo = to
+		}
 
 		gap := to.Sub(from)
 		willFill := gap <= resumeMaxGap
@@ -679,9 +682,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 
 		if !willFill {
-			if to.After(lastBackfillTo) {
-				lastBackfillTo = to
-			}
 			return nil
 		}
 
@@ -730,9 +730,6 @@ func (c *TailCmd) Run(globals *Globals) error {
 			}
 		}
 
-		if to.After(lastBackfillTo) {
-			lastBackfillTo = to
-		}
 		if !globals.Quiet {
 			if err := emitter.GapFilled(&output.GapFilledOutput{
 				Timestamp:     clk.Now().UTC().Format(time.RFC3339Nano),
@@ -766,7 +763,15 @@ func (c *TailCmd) Run(globals *Globals) error {
 		if !from.IsZero() {
 			to := clk.Now().UTC()
 			if err := backfillGap("restart", from, to); err != nil {
-				return err
+				emitWarning(globals, emitter, fmt.Sprintf(
+					"resume_backfill_failed reason=%s from=%s to=%s max_gap=%s limit=%d err=%s",
+					"restart",
+					from.UTC().Format(time.RFC3339Nano),
+					to.UTC().Format(time.RFC3339Nano),
+					resumeMaxGap.String(),
+					resumeLimit,
+					err,
+				))
 			}
 		}
 	}
@@ -887,8 +892,16 @@ func (c *TailCmd) Run(globals *Globals) error {
 						from = lastBackfillTo
 					}
 					to := clk.Now().UTC()
-					if err := backfillGap("reconnect", from, to); err != nil && !globals.Quiet {
-						emitWarning(globals, emitter, "resume_backfill_failed: "+err.Error())
+					if err := backfillGap("reconnect", from, to); err != nil {
+						emitWarning(globals, emitter, fmt.Sprintf(
+							"resume_backfill_failed reason=%s from=%s to=%s max_gap=%s limit=%d err=%s",
+							"reconnect",
+							from.UTC().Format(time.RFC3339Nano),
+							to.UTC().Format(time.RFC3339Nano),
+							resumeMaxGap.String(),
+							resumeLimit,
+							err,
+						))
 					}
 				}
 			} else if !globals.Quiet {
