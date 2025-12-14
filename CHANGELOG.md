@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2025-12-14
+
+### Changed
+- Contributor docs now require using Beads CLI (`bd`) for task management (`AGENTS.md`, `CLAUDE.md`).
+
 ## [0.19.0] - 2025-12-14
 
 ### Added
