@@ -29,8 +29,8 @@ type TailAgentFlags struct {
 	WaitForLaunch bool   `help:"Start streaming immediately, emit 'ready' event when capture is active"`
 	NoAgentHints  bool   `help:"Suppress agent_hints banners (leave off for AI agents)"`
 	DryRunJSON    bool   `help:"Print resolved stream options as JSON and exit (no streaming)"`
-	MaxDuration   string `help:"Stop after duration (e.g., '5m') emitting session_end (agent-safe cutoff)"`
-	MaxLogs       int    `help:"Stop after N logs emitting session_end (agent-safe cutoff)"`
+	MaxDuration   string `help:"Stop after duration (e.g., '5m') emitting cutoff_reached (agent-safe cutoff)"`
+	MaxLogs       int    `help:"Stop after N logs emitting cutoff_reached (agent-safe cutoff)"`
 	SessionIdle   string `help:"Emit session boundary after idle period with no logs (e.g., '60s')"`
 	Resume        bool   `help:"Backfill gaps on reconnect/restart via 'query' (NDJSON only; requires --app)"`
 	ResumeState   string `help:"Path to resume state file (default: ~/.xcw/resume/<bundle_id>.json)"`

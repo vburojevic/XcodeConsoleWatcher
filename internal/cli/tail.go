@@ -612,13 +612,16 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}
 
 		if maxLogs > 0 && totalLogs >= maxLogs {
-			if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
-				if err := emitter.SessionEnd(final); err != nil {
-					return false, true, err
+			if emitter != nil {
+				final := sessionTracker.GetFinalSummary()
+				sessionNum := sessionTracker.CurrentSession()
+				if final != nil {
+					sessionNum = final.Session
+					if err := emitter.SessionEnd(final); err != nil {
+						return false, true, err
+					}
 				}
-				if err := emitter.Cutoff("max_logs", tailID, final.Session, totalLogs); err != nil {
-					return false, true, err
-				}
+
 				if err := emitter.WriteHeartbeat(&output.Heartbeat{
 					Type:              "heartbeat",
 					SchemaVersion:     output.SchemaVersion,
@@ -632,6 +635,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 					return false, true, err
 				}
 				if err := emitStats(clk.Now()); err != nil {
+					return false, true, err
+				}
+				if err := emitter.Cutoff("max_logs", tailID, sessionNum, totalLogs); err != nil {
 					return false, true, err
 				}
 			}
@@ -928,13 +934,16 @@ func (c *TailCmd) Run(globals *Globals) error {
 		}():
 			// cutoff takes precedence
 			if cutoffTimer != nil {
-				if final := sessionTracker.GetFinalSummary(); final != nil && globals.Format == "ndjson" {
-					if err := emitter.SessionEnd(final); err != nil {
-						return err
+				if emitter != nil {
+					final := sessionTracker.GetFinalSummary()
+					sessionNum := sessionTracker.CurrentSession()
+					if final != nil {
+						sessionNum = final.Session
+						if err := emitter.SessionEnd(final); err != nil {
+							return err
+						}
 					}
-					if err := emitter.Cutoff("max_duration", tailID, final.Session, totalLogs); err != nil {
-						return err
-					}
+
 					if err := emitter.WriteHeartbeat(&output.Heartbeat{
 						Type:              "heartbeat",
 						SchemaVersion:     output.SchemaVersion,
@@ -948,6 +957,9 @@ func (c *TailCmd) Run(globals *Globals) error {
 						return err
 					}
 					if err := emitStats(clk.Now()); err != nil {
+						return err
+					}
+					if err := emitter.Cutoff("max_duration", tailID, sessionNum, totalLogs); err != nil {
 						return err
 					}
 				}

@@ -101,3 +101,76 @@ exit 1
 	require.True(t, types["log"], "expected at least one log entry")
 	require.True(t, types["cutoff_reached"], "expected cutoff_reached on --max-logs")
 }
+
+func TestTailMaxDuration_WithStubXcrun(t *testing.T) {
+	stubDir := t.TempDir()
+	xcrunPath := filepath.Join(stubDir, "xcrun")
+
+	// Stub xcrun simctl calls used by TailCmd:
+	// - list devices --json (device resolution)
+	// - spawn <udid> log stream (streaming)
+	script := `#!/bin/sh
+set -eu
+
+if [ "$#" -ge 4 ] && [ "$1" = "simctl" ] && [ "$2" = "list" ] && [ "$3" = "devices" ] && [ "$4" = "--json" ]; then
+  cat <<'EOF'
+{
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-17-0": [
+      {
+        "udid": "TEST-UDID-123",
+        "name": "iPhone 17 Pro",
+        "state": "Booted",
+        "isAvailable": true,
+        "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+        "dataPath": "/tmp",
+        "logPath": "/tmp"
+      }
+    ]
+  }
+}
+EOF
+  exit 0
+fi
+
+if [ "$#" -ge 5 ] && [ "$1" = "simctl" ] && [ "$2" = "spawn" ] && [ "$4" = "log" ] && [ "$5" = "stream" ]; then
+  # Keep the process alive; TailCmd should stop us after --max-duration.
+  exec sleep 60
+fi
+
+echo "stub: unsupported xcrun args: $*" >&2
+exit 1
+`
+	require.NoError(t, os.WriteFile(xcrunPath, []byte(script), 0o755))
+
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	globals := &Globals{
+		Format: "ndjson",
+		Level:  "debug",
+		Quiet:  true,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Config: config.Default(),
+	}
+	cmd := &TailCmd{
+		Booted: true,
+		All:    true,
+		TailAgentFlags: TailAgentFlags{
+			MaxDuration:  "50ms",
+			NoAgentHints: true,
+		},
+	}
+
+	require.NoError(t, cmd.Run(globals))
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	require.NotEmpty(t, lines)
+
+	var last map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[len(lines)-1]), &last))
+	require.Equal(t, "cutoff_reached", last["type"])
+	require.Equal(t, "max_duration", last["reason"])
+}
