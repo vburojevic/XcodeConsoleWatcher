@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.12] - 2025-12-15
+
+### Changed
+- `xcw tail` cutoffs (`--max-duration`/`--max-logs`) now emit `cutoff_reached` even without `--app` (e.g., `--all`/`--predicate`) and make it the final event.
+
+### Fixed
+- Tail flag help for `--max-duration` and `--max-logs` now references `cutoff_reached`.
+
 ## [0.19.11] - 2025-12-15
 
 ### Changed
