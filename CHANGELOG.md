@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.13] - 2025-12-15
+
+### Changed
+- `xcw help --json` and `xcw examples` now document `xcw tail` cutoffs (`--max-duration`/`--max-logs`) and list `cutoff_reached` as a tail output type.
+- README now includes `xcw tail --max-duration` / `--max-logs` examples.
+
 ## [0.19.12] - 2025-12-15
 
 ### Changed
