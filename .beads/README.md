@@ -39,7 +39,7 @@ Issues in Beads are:
 - **Always in sync**: Auto-syncs with your commits
 
 Notes:
-- Repo config defaults to deterministic direct mode (`no-daemon: true` in `.beads/config.yaml`).
+- Repo config defaults to daemon mode (`no-daemon: false` and `auto-start-daemon: true` in `.beads/config.yaml`).
 - Valid statuses in this repo: `open`, `in_progress`, `blocked`, `closed`.
 - Do not hand-edit `.beads/*` files; use the CLI so hashes and metadata stay consistent.
 

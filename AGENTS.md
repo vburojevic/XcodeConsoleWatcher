@@ -11,12 +11,12 @@
   - `session/`, `tmux/`, `tui/`, `config/`, `domain/`
 - `docs/help.json` and `schemas/generated.schema.json`: generated + embedded artifacts.
 - `scripts/`: regen helpers (`gen-readme.sh`, `gen-schema.sh`).
-- `.beads/`: Beads issue tracker data (use `bd`; repo config defaults to deterministic direct mode).
+- `.beads/`: Beads issue tracker data (use `bd`; repo config defaults to daemon mode with auto-start enabled).
 
 ## Task Management (Beads)
 
 - Always use Beads CLI (`bd`) for task management (create issues/epics, update status, add comments, close work).
-- This repo defaults to deterministic direct mode (`no-daemon: true` and `auto-start-daemon: false` in `.beads/config.yaml`).
+- This repo defaults to daemon mode (`no-daemon: false`) with `auto-start-daemon: true` in `.beads/config.yaml` (avoids bd-160 hash mismatch warnings seen in direct mode).
 - Do not hand-edit `.beads/*` JSONL/db files; use `bd` commands to avoid drift and hash mismatches.
 
 ## Architecture & Extensibility

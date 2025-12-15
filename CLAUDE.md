@@ -31,7 +31,7 @@ make install                  # Install to /usr/local/bin
 This repo uses Beads for task tracking. Always manage work via the Beads CLI (`bd`) rather than ad-hoc TODO lists in chat.
 
 ```bash
-# This repo config defaults to deterministic direct mode (no-daemon).
+# This repo config defaults to daemon mode (auto-start enabled).
 bd list --long
 
 # Create a task/feature/bug
