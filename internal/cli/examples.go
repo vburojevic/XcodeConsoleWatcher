@@ -75,6 +75,11 @@ var commandExamples = map[string]CommandExamples{
 				Description: "Exclude noisy log patterns",
 				When:        "Filter out repetitive logs",
 			},
+			{
+				Command:     `xcw tail -s "iPhone 17 Pro" -a com.example.myapp --dry-run-json`,
+				Description: "Print resolved stream options as JSON and exit",
+				When:        "Debugging predicates/filters before starting a stream",
+			},
 		},
 	},
 	"query": {
@@ -102,6 +107,48 @@ var commandExamples = map[string]CommandExamples{
 				Output:      `{"type":"analysis","summary":{...},"patterns":[...]}`,
 				When:        "Get grouped error patterns and counts",
 			},
+			{
+				Command:     `xcw query -s "iPhone 17 Pro" -a com.example.myapp --since 5m --dry-run-json`,
+				Description: "Print resolved query options as JSON and exit",
+				When:        "Debugging query settings before running",
+			},
+		},
+	},
+	"watch": {
+		Name:        "watch",
+		Description: "Stream logs and run triggers on patterns",
+		Examples: []Example{
+			{
+				Command:     `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --trigger-output capture`,
+				Description: "Run a command when error-level logs appear",
+				When:        "Auto-notify and capture diagnostics on failures",
+			},
+			{
+				Command:     `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --on-pattern 'crash|fatal:./notify.sh' --cooldown 10s`,
+				Description: "Run a command when a regex matches the message",
+				When:        "Trigger on crash signatures or keywords",
+			},
+			{
+				Command:     `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --dry-run-json`,
+				Description: "Print resolved stream options and triggers as JSON and exit",
+				When:        "Debugging trigger configuration before starting a stream",
+			},
+		},
+	},
+	"discover": {
+		Name:        "discover",
+		Description: "Discover subsystems, categories, and processes in logs",
+		Examples: []Example{
+			{
+				Command:     `xcw discover -s "iPhone 17 Pro" --since 5m`,
+				Description: "Discover recent log sources",
+				When:        "Before choosing subsystems/categories for filters",
+			},
+			{
+				Command:     `xcw discover -s "iPhone 17 Pro" -a com.example.myapp --since 10m`,
+				Description: "Discover log sources for a specific app",
+				When:        "When your app logs across multiple subsystems/categories",
+			},
 		},
 	},
 	"list": {
@@ -122,6 +169,22 @@ var commandExamples = map[string]CommandExamples{
 				Command:     `xcw list -f text`,
 				Description: "Human-readable output",
 				When:        "Manual inspection",
+			},
+		},
+	},
+	"launch": {
+		Name:        "launch",
+		Description: "Launch app and capture stdout/stderr (print statements)",
+		Examples: []Example{
+			{
+				Command:     `xcw launch -s "iPhone 17 Pro" -a com.example.myapp`,
+				Description: "Launch app and capture stdout/stderr output",
+				When:        "You need to capture Swift print() statements",
+			},
+			{
+				Command:     `xcw launch -s "iPhone 17 Pro" -a com.example.myapp --terminate-existing`,
+				Description: "Terminate existing instance before launching",
+				When:        "Ensure a clean launch before capturing output",
 			},
 		},
 	},
@@ -280,7 +343,7 @@ func (c *ExamplesCmd) outputJSON(globals *Globals) error {
 		}
 	} else {
 		// All commands
-		for _, cmd := range []string{"tail", "query", "list", "apps", "doctor", "analyze", "replay", "sessions", "schema"} {
+		for _, cmd := range []string{"tail", "query", "watch", "discover", "list", "apps", "launch", "doctor", "analyze", "replay", "sessions", "schema"} {
 			if examples, ok := commandExamples[cmd]; ok {
 				all.Commands = append(all.Commands, examples)
 			}
@@ -305,14 +368,14 @@ func (c *ExamplesCmd) outputText(globals *Globals) error {
 		if examples, ok := commandExamples[c.Command]; ok {
 			c.formatCommandExamples(&sb, examples)
 		} else {
-			return fmt.Errorf("unknown command: %s\nAvailable: tail, query, list, apps, doctor, analyze, replay, sessions, schema", c.Command)
+			return fmt.Errorf("unknown command: %s\nAvailable: tail, query, watch, discover, list, apps, launch, doctor, analyze, replay, sessions, schema", c.Command)
 		}
 	} else {
 		// All commands
 		sb.WriteString("XCW USAGE EXAMPLES\n")
 		sb.WriteString("==================\n\n")
 
-		for _, cmd := range []string{"tail", "query", "list", "apps", "doctor", "analyze", "replay", "sessions", "schema"} {
+		for _, cmd := range []string{"tail", "query", "watch", "discover", "list", "apps", "launch", "doctor", "analyze", "replay", "sessions", "schema"} {
 			if examples, ok := commandExamples[cmd]; ok {
 				c.formatCommandExamples(&sb, examples)
 				sb.WriteString("\n")

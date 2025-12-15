@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.7] - 2025-12-15
+
+### Added
+- `xcw examples` now includes `watch`, `discover`, and `launch` plus `--dry-run-json` examples for `tail`/`query`/`watch`.
+
+### Changed
+- README now documents `xcw query --dry-run-json` and `xcw watch --dry-run-json`.
+
 ## [0.19.6] - 2025-12-15
 
 ### Fixed

@@ -262,6 +262,9 @@ xcw tail -s "iPhone 17 Pro" -a com.example.myapp --resume --resume-max-gap 2m --
 # query the last 5 minutes of logs for your app
 xcw query -a com.example.myapp --since 5m
 
+# dry-run to see the resolved query options as JSON (no query)
+xcw query -a com.example.myapp --since 5m --dry-run-json
+
 # query with analysis to group and count error patterns
 xcw query -a com.example.myapp --since 10m --analyze
 
@@ -282,6 +285,9 @@ xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-erro
 
 # run a command when a regex matches the message (pattern:command; can be repeated)
 xcw watch -s "iPhone 17 Pro" -a com.example.myapp --on-pattern 'crash|fatal:./notify.sh' --cooldown 10s
+
+# dry-run to see the resolved stream options and triggers as JSON (no streaming)
+xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --dry-run-json
 ```
 
 In NDJSON mode, trigger executions are correlated by `trigger_id` (and scoped by `tail_id`/`session`):
