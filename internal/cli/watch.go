@@ -56,6 +56,8 @@ type WatchCmd struct {
 	TriggerOutput       string   `default:"discard" enum:"inherit,discard,capture" help:"Trigger command output handling"`
 	TriggerNoShell      bool     `help:"Run trigger commands directly without shell (safer). Command is split on spaces; no shell expansions."`
 	DryRunJSON          bool     `help:"Print resolved stream options and triggers as JSON and exit (no streaming; ndjson output only)"`
+	MaxDuration         string   `help:"Stop after duration (e.g., '5m') emitting cutoff_reached (agent-safe cutoff)"`
+	MaxLogs             int      `help:"Stop after N logs emitting cutoff_reached (agent-safe cutoff)"`
 	Output              string   `short:"o" help:"Write output to explicit file path"`
 	SessionDir          string   `help:"Directory for session files (default: ~/.xcw/sessions)"`
 	SessionPrefix       string   `help:"Prefix for session filename (default: app bundle ID)"`
@@ -91,15 +93,12 @@ func maybeNoStyleWatch(globals *Globals) {
 // Run executes the watch command
 func (c *WatchCmd) Run(globals *Globals) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 	maybeNoStyleWatch(globals)
 	applyWatchDefaults(globals.Config, c)
 	tailID := generateTailID()
 	clk := clock.New()
 	triggerGroup, triggerCtx := errgroup.WithContext(ctx)
-	defer func() {
-		stop()
-		_ = triggerGroup.Wait()
-	}()
 
 	var stdoutMu sync.Mutex
 	stdoutNDJSON := output.NewNDJSONWriter(globals.Stdout)
@@ -120,6 +119,18 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	if err != nil {
 		return c.outputError(globals, "INVALID_TRIGGER_TIMEOUT", fmt.Sprintf("invalid trigger timeout: %s", err))
 	}
+
+	// Max duration/logs cutoffs
+	var cutoffTimer *clock.Timer
+	if c.MaxDuration != "" {
+		dur, err := time.ParseDuration(c.MaxDuration)
+		if err != nil {
+			return c.outputError(globals, "INVALID_MAX_DURATION", fmt.Sprintf("invalid max duration: %s", err))
+		}
+		cutoffTimer = clk.Timer(dur)
+		defer cutoffTimer.Stop()
+	}
+	maxLogs := c.MaxLogs
 
 	// Create semaphore for limiting parallel triggers
 	triggerSem := make(chan struct{}, c.MaxParallelTriggers)
@@ -211,6 +222,8 @@ func (c *WatchCmd) Run(globals *Globals) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(struct {
 			Stream              simulator.StreamOptions `json:"stream"`
+			MaxDuration         string                  `json:"max_duration,omitempty"`
+			MaxLogs             int                     `json:"max_logs,omitempty"`
 			Cooldown            string                  `json:"cooldown"`
 			TriggerTimeout      string                  `json:"trigger_timeout"`
 			MaxParallelTriggers int                     `json:"max_parallel_triggers"`
@@ -221,6 +234,8 @@ func (c *WatchCmd) Run(globals *Globals) error {
 			OnPattern           []string                `json:"on_pattern,omitempty"`
 		}{
 			Stream:              opts,
+			MaxDuration:         c.MaxDuration,
+			MaxLogs:             c.MaxLogs,
 			Cooldown:            c.Cooldown,
 			TriggerTimeout:      c.TriggerTimeout,
 			MaxParallelTriggers: c.MaxParallelTriggers,
@@ -377,16 +392,15 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	if err := streamer.Start(ctx, device.UDID, opts); err != nil {
 		return c.outputError(globals, "STREAM_FAILED", err.Error(), hintForStreamOrQuery(err))
 	}
-	defer func() {
-		if err := streamer.Stop(); err != nil {
-			globals.Debug("failed to stop streamer: %v", err)
-		}
-	}()
+	streamStarted := true
 
 	// Track last trigger times for cooldown
 	lastErrorTrigger := time.Time{}
 	lastFaultTrigger := time.Time{}
 	lastPatternTriggers := make(map[int]time.Time)
+	totalLogs := 0
+	cutoffReason := ""
+	var runErr error
 
 	// Create output writer
 	var writer interface {
@@ -400,10 +414,20 @@ func (c *WatchCmd) Run(globals *Globals) error {
 	}
 
 	// Process logs
+loop:
 	for {
 		select {
 		case <-ctx.Done():
+			break loop
+
+		case <-func() <-chan time.Time {
+			if cutoffTimer != nil {
+				return cutoffTimer.C
+			}
 			return nil
+		}():
+			cutoffReason = "max_duration"
+			break loop
 
 		case entry := <-streamer.Logs():
 			// Apply where filtering (post-stream)
@@ -427,11 +451,13 @@ func (c *WatchCmd) Run(globals *Globals) error {
 			// Output the log entry
 			if globals.Format == "ndjson" && outputWriter == globals.Stdout {
 				if err := writeStdout(func(w *output.NDJSONWriter) error { return w.Write(&entry) }); err != nil {
-					return err
+					runErr = err
+					break loop
 				}
 			} else {
 				if err := writer.Write(&entry); err != nil {
-					return err
+					runErr = err
+					break loop
 				}
 			}
 
@@ -463,10 +489,17 @@ func (c *WatchCmd) Run(globals *Globals) error {
 				}
 			}
 
+			totalLogs++
+			if maxLogs > 0 && totalLogs >= maxLogs {
+				cutoffReason = "max_logs"
+				break loop
+			}
+
 		case err := <-streamer.Errors():
 			if globals.Format == "ndjson" && outputWriter == globals.Stdout {
 				if werr := writeStdout(func(w *output.NDJSONWriter) error { return w.WriteWarning(err.Error()) }); werr != nil {
-					return werr
+					runErr = werr
+					break loop
 				}
 				continue
 			}
@@ -474,6 +507,34 @@ func (c *WatchCmd) Run(globals *Globals) error {
 			emitWarning(globals, em, err.Error())
 		}
 	}
+
+	if streamStarted {
+		if err := streamer.Stop(); err != nil {
+			globals.Debug("failed to stop streamer: %v", err)
+		}
+	}
+
+	// On errors, cancel triggers early. For cutoff exits, let in-flight triggers finish so cutoff_reached is last.
+	if runErr != nil {
+		stop()
+	}
+	_ = triggerGroup.Wait()
+
+	if cutoffReason != "" && runErr == nil && globals.Format == "ndjson" {
+		if err := writeStdout(func(w *output.NDJSONWriter) error {
+			return w.WriteCutoff(cutoffReason, tailID, sessionTracker.CurrentSession(), totalLogs)
+		}); err != nil {
+			return err
+		}
+	}
+
+	if cutoffReason != "" && runErr == nil && globals.Format != "ndjson" && !globals.Quiet {
+		if _, err := fmt.Fprintf(globals.Stderr, "Cutoff reached: %s\n", cutoffReason); err != nil {
+			globals.Debug("failed to write cutoff notice: %v", err)
+		}
+	}
+
+	return runErr
 }
 
 // runTrigger executes a trigger command with safety limits

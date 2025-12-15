@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.9] - 2025-12-15
+
+### Added
+- `xcw watch --max-duration` and `xcw watch --max-logs` to stop streaming with an agent-safe `cutoff_reached` marker.
+- Test: stubbed `xcrun` integration-style coverage for `xcw watch --max-logs` including trigger execution.
+
 ## [0.19.8] - 2025-12-15
 
 ### Changed

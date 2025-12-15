@@ -129,6 +129,11 @@ var commandExamples = map[string]CommandExamples{
 				When:        "Trigger on crash signatures or keywords",
 			},
 			{
+				Command:     `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --max-duration 5m`,
+				Description: "Watch for 5 minutes and stop (agent-safe cutoff)",
+				When:        "Bounded monitoring in CI or scripted workflows",
+			},
+			{
 				Command:     `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --dry-run-json`,
 				Description: "Print resolved stream options and triggers as JSON and exit",
 				When:        "Debugging trigger configuration before starting a stream",

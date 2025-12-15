@@ -154,14 +154,15 @@ func buildDocumentation() *HelpOutput {
 				RelatedCommands: []string{"tail", "analyze"},
 			},
 			"watch": {
-				Description: "Stream logs like tail, but run trigger commands on errors/faults or message patterns",
+				Description: "Stream logs like tail, but run trigger commands on errors/faults or message patterns (supports agent-safe cutoffs via --max-duration/--max-logs)",
 				Usage:       "xcw watch -s SIMULATOR [-a APP] [flags]",
 				Examples: []ExampleDoc{
 					{Command: `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --trigger-output capture`, Description: "Run a command when an error-level log appears"},
 					{Command: `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --on-pattern 'crash|fatal:./notify.sh' --cooldown 10s`, Description: "Run a command when a regex matches the message"},
+					{Command: `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --max-duration 5m`, Description: "Watch for 5 minutes and stop"},
 					{Command: `xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --dry-run-json`, Description: "Print resolved stream options and triggers as JSON and exit"},
 				},
-				OutputTypes:     []string{"log", "trigger", "trigger_result", "trigger_error", "tmux", "error"},
+				OutputTypes:     []string{"log", "trigger", "trigger_result", "trigger_error", "cutoff_reached", "tmux", "error"},
 				RelatedCommands: []string{"tail", "query", "discover"},
 			},
 			"list": {

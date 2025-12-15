@@ -286,6 +286,9 @@ xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-erro
 # run a command when a regex matches the message (pattern:command; can be repeated)
 xcw watch -s "iPhone 17 Pro" -a com.example.myapp --on-pattern 'crash|fatal:./notify.sh' --cooldown 10s
 
+# stop after 5 minutes (agent-safe cutoff)
+xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --max-duration 5m
+
 # dry-run to see the resolved stream options and triggers as JSON (no streaming)
 xcw watch -s "iPhone 17 Pro" -a com.example.myapp --where level>=error --on-error "./notify.sh" --dry-run-json
 ```
