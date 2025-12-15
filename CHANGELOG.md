@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.11] - 2025-12-15
+
+### Changed
+- `xcw examples` now covers more commands (config/pick/completion/summary/update/version/log-schema/handoff/ui/clear).
+
 ## [0.19.10] - 2025-12-15
 
 ### Changed

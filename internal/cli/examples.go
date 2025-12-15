@@ -8,7 +8,7 @@ import (
 
 // ExamplesCmd shows usage examples for xcw commands
 type ExamplesCmd struct {
-	Command string `arg:"" optional:"" help:"Show examples for specific command (tail, query, apps, list, etc.)"`
+	Command string `arg:"" optional:"" help:"Show examples for specific command (tail, query, watch, etc.)"`
 	JSON    bool   `help:"Output as JSON for programmatic access"`
 }
 
@@ -285,6 +285,169 @@ var commandExamples = map[string]CommandExamples{
 			},
 		},
 	},
+	"examples": {
+		Name:        "examples",
+		Description: "Show curated usage examples for xcw commands",
+		Examples: []Example{
+			{
+				Command:     `xcw examples`,
+				Description: "Show all examples",
+			},
+			{
+				Command:     `xcw examples tail`,
+				Description: "Show examples for a single command",
+			},
+			{
+				Command:     `xcw examples --json`,
+				Description: "Machine-readable examples",
+			},
+		},
+	},
+	"log-schema": {
+		Name:        "log-schema",
+		Description: "Output minimal log schema docs for agents",
+		Examples: []Example{
+			{
+				Command:     `xcw log-schema`,
+				Description: "Minimal log schema fields and example",
+				When:        "You need a compact schema definition for agents/parsers",
+			},
+		},
+	},
+	"handoff": {
+		Name:        "handoff",
+		Description: "Emit a compact JSON handoff blob for agents",
+		Examples: []Example{
+			{
+				Command:     `xcw handoff`,
+				Description: "Emit contract hints + versions for agent handoff",
+				When:        "Transfer context to another agent/tooling stage",
+			},
+		},
+	},
+	"version": {
+		Name:        "version",
+		Description: "Show version information",
+		Examples: []Example{
+			{
+				Command:     `xcw version`,
+				Description: "NDJSON version output (default)",
+				Output:      `{"type":"version","version":"0.19.10","commit":"none"}`,
+			},
+			{
+				Command:     `xcw -f text version`,
+				Description: "Human-readable version output",
+				When:        "Manual inspection in a terminal",
+			},
+		},
+	},
+	"update": {
+		Name:        "update",
+		Description: "Show how to upgrade xcw",
+		Examples: []Example{
+			{
+				Command:     `xcw update`,
+				Description: "Upgrade instructions (NDJSON by default)",
+				Output:      `{"type":"update","current_version":"0.19.10","homebrew":"brew update && brew upgrade xcw",...}`,
+			},
+			{
+				Command:     `xcw -f text update`,
+				Description: "Human-readable upgrade instructions",
+				When:        "Manual inspection in a terminal",
+			},
+		},
+	},
+	"config": {
+		Name:        "config",
+		Description: "Show or manage configuration",
+		Examples: []Example{
+			{
+				Command:     `xcw config`,
+				Description: "Show effective configuration (default: show)",
+				Output:      `{"type":"config","config_file":"~/.config/xcw/config.yaml","sources":{...}}`,
+			},
+			{
+				Command:     `xcw config path`,
+				Description: "Show resolved config file path",
+				Output:      `{"type":"config_path","path":"~/.config/xcw/config.yaml"}`,
+			},
+			{
+				Command:     `xcw config generate > .xcw.yaml`,
+				Description: "Generate a sample config file",
+				When:        "Bootstrap configuration for team/CI usage",
+			},
+		},
+	},
+	"pick": {
+		Name:        "pick",
+		Description: "Interactively pick a simulator or app",
+		Examples: []Example{
+			{
+				Command:     `xcw pick simulator`,
+				Description: "Pick a simulator and print its UDID",
+				When:        "You want to avoid copy-pasting simulator IDs",
+			},
+			{
+				Command:     `xcw pick app`,
+				Description: "Pick an app on the booted simulator and print bundle id",
+				When:        "You want to quickly get a bundle id for tail/query/watch",
+			},
+		},
+	},
+	"completion": {
+		Name:        "completion",
+		Description: "Generate shell completions",
+		Examples: []Example{
+			{
+				Command:     `xcw completion zsh > _xcw`,
+				Description: "Generate zsh completion script",
+				When:        "Install completions locally",
+			},
+			{
+				Command:     `xcw completion bash > xcw.bash`,
+				Description: "Generate bash completion script",
+				When:        "Install completions locally",
+			},
+		},
+	},
+	"summary": {
+		Name:        "summary",
+		Description: "Summarize recent logs for an app (bounded query + analysis)",
+		Examples: []Example{
+			{
+				Command:     `xcw summary -a com.example.myapp --window 5m`,
+				Description: "Summarize last 5 minutes",
+				Output:      `{"type":"analysis","summary":{...},"patterns":[...]}`,
+			},
+			{
+				Command:     `xcw summary -s "iPhone 17 Pro" -a com.example.myapp --window 30m -p "error|fatal"`,
+				Description: "Summarize last 30 minutes with a regex filter",
+				When:        "Reduce noise and focus on errors during a run",
+			},
+		},
+	},
+	"clear": {
+		Name:        "clear",
+		Description: "Clear a tmux session pane",
+		Examples: []Example{
+			{
+				Command:     `xcw clear --session xcw-iphone-17-pro`,
+				Description: "Clear a tmux pane used by tail/watch --tmux",
+				When:        "Reset the view between runs",
+			},
+		},
+	},
+	"ui": {
+		Name:        "ui",
+		Description: "Interactive TUI log viewer (human mode)",
+		Examples: []Example{
+			{
+				Command:     `xcw ui -s "iPhone 17 Pro" -a com.example.myapp`,
+				Description: "Open TUI for an app on a simulator",
+				When:        "Manual interactive log exploration (not suitable for agents)",
+			},
+		},
+	},
 }
 
 var workflows = []WorkflowExample{
@@ -348,7 +511,7 @@ func (c *ExamplesCmd) outputJSON(globals *Globals) error {
 		}
 	} else {
 		// All commands
-		for _, cmd := range []string{"tail", "query", "watch", "discover", "list", "apps", "launch", "doctor", "analyze", "replay", "sessions", "schema"} {
+		for _, cmd := range []string{"tail", "query", "watch", "summary", "discover", "list", "apps", "pick", "launch", "ui", "clear", "doctor", "config", "schema", "log-schema", "handoff", "completion", "examples", "update", "version", "analyze", "replay", "sessions"} {
 			if examples, ok := commandExamples[cmd]; ok {
 				all.Commands = append(all.Commands, examples)
 			}
@@ -373,14 +536,14 @@ func (c *ExamplesCmd) outputText(globals *Globals) error {
 		if examples, ok := commandExamples[c.Command]; ok {
 			c.formatCommandExamples(&sb, examples)
 		} else {
-			return fmt.Errorf("unknown command: %s\nAvailable: tail, query, watch, discover, list, apps, launch, doctor, analyze, replay, sessions, schema", c.Command)
+			return fmt.Errorf("unknown command: %s\nAvailable: tail, query, watch, summary, discover, list, apps, pick, launch, ui, clear, doctor, config, schema, log-schema, handoff, completion, examples, update, version, analyze, replay, sessions", c.Command)
 		}
 	} else {
 		// All commands
 		sb.WriteString("XCW USAGE EXAMPLES\n")
 		sb.WriteString("==================\n\n")
 
-		for _, cmd := range []string{"tail", "query", "watch", "discover", "list", "apps", "launch", "doctor", "analyze", "replay", "sessions", "schema"} {
+		for _, cmd := range []string{"tail", "query", "watch", "summary", "discover", "list", "apps", "pick", "launch", "ui", "clear", "doctor", "config", "schema", "log-schema", "handoff", "completion", "examples", "update", "version", "analyze", "replay", "sessions"} {
 			if examples, ok := commandExamples[cmd]; ok {
 				c.formatCommandExamples(&sb, examples)
 				sb.WriteString("\n")
