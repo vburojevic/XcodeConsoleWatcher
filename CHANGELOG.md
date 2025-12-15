@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.15] - 2025-12-15
+
+### Changed
+- Beads repo workflow now defaults to daemon mode with auto-start (avoids bd-160 JSONL hash mismatch warnings).
+
 ## [0.19.14] - 2025-12-15
 
 ### Changed
